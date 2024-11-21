@@ -8,7 +8,7 @@ pydub
 gTTS
 scipy
 gunicorn
-imageio-ffmpeg
+imageio[ffmpeg]
 numpy
 decorator
 tqdm
