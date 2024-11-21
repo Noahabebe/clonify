@@ -8,3 +8,4 @@ pydub
 gTTS
 numpy
 scipy
+gunicorn
