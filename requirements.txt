@@ -1,5 +1,5 @@
 Flask
-moviepy==0.2.3.3
+moviepy
 librosa
 nltk
 mediapipe
@@ -8,7 +8,7 @@ pydub
 gTTS
 scipy
 gunicorn
-imageio[ffmpeg]
+imageio-ffmpeg
 numpy
 decorator
 tqdm
