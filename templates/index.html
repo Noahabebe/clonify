@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lip Sync Model</title>
+</head>
+<body>
+    <h1>Upload Video and Script</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <label for="video">Choose Video:</label>
+        <input type="file" name="video" required><br><br>
+        <label for="script">Enter Script:</label>
+        <textarea name="script" rows="4" cols="50" required></textarea><br><br>
+        <button type="submit">Upload</button>
+    </form>
+</body>
+</html>
