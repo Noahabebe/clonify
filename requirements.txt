@@ -6,6 +6,10 @@ mediapipe
 fastdtw
 pydub
 gTTS
-numpy
 scipy
 gunicorn
+imageio[ffmpeg]
+numpy
+decorator
+tqdm
+
