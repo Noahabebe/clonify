@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 # Update package lists and install ffmpeg
-apt-get update && apt-get install -y ffmpeg
+curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz | tar -xJ
+mv ffmpeg-*-static/ffmpeg /usr/local/bin/
