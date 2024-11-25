@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 from lip_sync_model import LipSyncModel
 from tts.generate_tts import generate_tts_audio
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips
 
 app = Flask(__name__)
 lip_sync_model = LipSyncModel()
