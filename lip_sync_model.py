@@ -32,7 +32,7 @@ class LipSyncModel:
 
     def find_matching_audio_segments(self, audio_path: str, phonemes: list) -> list:
         segments = []
-        y, sr = librosa.load(audio_path, sr=22050)
+        y, sr = librosa.load(audio_path, sr=22050, numba=False)
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
         for phoneme in phonemes:
             start, end = self.find_audio_segment_for_word(mfccs, phoneme)
