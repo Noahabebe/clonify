@@ -4,15 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lip Sync Model</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
-<body>
-    <h1>Upload Video and Script</h1>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        <label for="video">Choose Video:</label>
-        <input type="file" name="video" required><br><br>
-        <label for="script">Enter Script:</label>
-        <textarea name="script" rows="4" cols="50" required></textarea><br><br>
-        <button type="submit">Upload</button>
-    </form>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+        <h1 class="text-2xl font-bold text-center mb-6">Upload Video and Script</h1>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div class="mb-4">
+                <label for="video" class="block text-gray-700">Choose Video:</label>
+                <input type="file" name="video" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+            </div>
+            <div class="mb-4">
+                <label for="script" class="block text-gray-700">Enter Script:</label>
+                <textarea name="script" rows="4" cols="50" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200">Upload</button>
+        </form>
+    </div>
 </body>
 </html>
+ 
