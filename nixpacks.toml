@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["ffmpeg", "libGL", "glibc", "glib"]
+
+[phases.install]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
+
+[phases.build]
+cmds = ["echo 'Build phase completed'"]
+
+[phases.start]
+cmds = ["gunicorn -w 4 -b 0.0.0.0:3000 app:app"]
