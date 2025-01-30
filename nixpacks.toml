@@ -4,10 +4,8 @@ nixPkgs = ["ffmpeg", "libGL", "glibc", "glib"]
 [phases.install]
 cmds = [
   "pip install --no-cache-dir -r requirements.txt",
-  "pip install gunicorn"
+  "chmod +x start.sh"  # This fixes the permission issue
 ]
-[phases.build]
-cmds = ["echo 'Build phase completed'"]
 
 [phases.start]
-cmds = ["start.sh"]
+cmds = ["./start.sh"]
