@@ -21,4 +21,4 @@ RUN apt-get update && apt-get install -y \
 EXPOSE 5000
 
 # Command to run Gunicorn with Gevent workers
-CMD ["gunicorn", "-w", "4", "-k", "gevent", "--timeout", "120", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "app:app"]
