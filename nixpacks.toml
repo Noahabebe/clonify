@@ -10,4 +10,4 @@ cmds = [
 cmds = ["echo 'Build phase completed'"]
 
 [phases.start]
-cmds = ["gunicorn -w 4 -b 0.0.0.0:3000 app:app"]
+cmds = ["./start.sh"]
