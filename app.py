@@ -20,43 +20,52 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_video():
     try:
-        # Save uploaded video
-        video = request.files['video']
-        script = request.form['script']
+        video = request.files.get('video')
+        script = request.form.get('script')
+        if not video or not script:
+            return jsonify({"message": "Missing video or script!"}), 400
+
         video_path = os.path.join(UPLOAD_DIR, video.filename)
         video.save(video_path)
 
-        # Extract audio and process phonemes
+        print("Extracting audio...")
         audio_path = lip_sync_model.extract_audio_from_video(video_path)
+
+        print("Generating phonemes...")
         phonemes = lip_sync_model.get_phonemes_from_script(script)
+
+        print("Finding matching segments...")
         segments = lip_sync_model.find_matching_audio_segments(audio_path, phonemes)
+        print(f"Segments found: {segments}")
 
-        if not segments:
-            return jsonify({"message": "No matching audio segments found!"}), 400
-
-        # Mute segments in the video
         muted_video_path = os.path.join(PROCESSED_DIR, 'muted_video.mp4')
         mute_video_segments(video_path, segments, muted_video_path)
 
         if not os.path.exists(muted_video_path):
+            print("Muted video creation failed!")
             return jsonify({"message": "Failed to create muted video!"}), 500
 
-        # Generate TTS audio
+        print("Generating TTS audio...")
         tts_audio_path = generate_tts_audio(script, os.path.join(PROCESSED_DIR, 'tts_audio.mp3'))
+
         if not os.path.exists(tts_audio_path):
+            print("TTS generation failed!")
             return jsonify({"message": "Failed to create TTS audio!"}), 500
 
-        # Combine audio and video
         final_video_path = os.path.join(PROCESSED_DIR, 'final_video.mp4')
+        print("Combining audio and video...")
         combine_audio_video(muted_video_path, tts_audio_path, final_video_path)
 
         if not os.path.exists(final_video_path):
+            print("Final video creation failed!")
             return jsonify({"message": "Failed to create final video!"}), 500
 
         return jsonify({"message": "Video processed successfully!", "video_path": final_video_path})
 
     except Exception as e:
+        print(f"Error: {e}")
         return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+
 
 def mute_video_segments(video_path, segments, output_path):
     try:
