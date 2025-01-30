@@ -10,6 +10,11 @@ COPY . /app
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install system dependencies for FFmpeg and OpenCV compatibility
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    ffmpeg
+
 # Expose port 5000
 EXPOSE 5000
 
