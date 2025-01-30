@@ -13,3 +13,5 @@ numpy
 decorator
 tqdm
 numba
+pymongo 
+gridfs
