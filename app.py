@@ -6,7 +6,7 @@ from bson.objectid import ObjectId
 from io import BytesIO
 from lip_sync_model import LipSyncModel
 from tts.generate_tts import generate_tts_audio
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips
 
 app = Flask(__name__)
 lip_sync_model = LipSyncModel()
