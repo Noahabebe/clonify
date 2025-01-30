@@ -1,16 +1,23 @@
-from flask import Flask, request, jsonify, send_from_directory
 import os
+import gridfs
+from flask import Flask, request, jsonify, send_file, send_from_directory
+from pymongo import MongoClient
+from bson.objectid import ObjectId
+from io import BytesIO
 from lip_sync_model import LipSyncModel
 from tts.generate_tts import generate_tts_audio
-from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
 
 app = Flask(__name__)
 lip_sync_model = LipSyncModel()
 
-# Ensure directories exist
-UPLOAD_DIR = 'static/uploaded_videos'
+# MongoDB Setup
+client = MongoClient("mongodb://root:OT9Xh66yfE3wkLuiTv59zpt1dI96zEgXTk2VQb8EHM1yPOUKuhu5tZq7PKbHy2hV@wc4cw8ck4ocskgk0oww08w0c:27017/?directConnection=true")  # Change if using MongoDB Atlas
+db = client["video_storage"]
+fs = gridfs.GridFS(db)
+
+# Local Directories for Processed Files
 PROCESSED_DIR = 'static/processed_videos'
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 @app.route('/')
@@ -22,14 +29,15 @@ def upload_video():
     try:
         video = request.files.get('video')
         script = request.form.get('script')
+
         if not video or not script:
             return jsonify({"message": "Missing video or script!"}), 400
 
-        video_path = os.path.join(UPLOAD_DIR, video.filename)
-        video.save(video_path)
+        # Save video to MongoDB GridFS
+        video_id = fs.put(video, filename=video.filename, content_type=video.content_type)
 
         print("Extracting audio...")
-        audio_path = lip_sync_model.extract_audio_from_video(video_path)
+        audio_path = lip_sync_model.extract_audio_from_video(video)
 
         print("Generating phonemes...")
         phonemes = lip_sync_model.get_phonemes_from_script(script)
@@ -38,21 +46,21 @@ def upload_video():
         segments = lip_sync_model.find_matching_audio_segments(audio_path, phonemes)
         print(f"Segments found: {segments}")
 
-        muted_video_path = os.path.join(PROCESSED_DIR, 'muted_video.mp4')
-        mute_video_segments(video_path, segments, muted_video_path)
+        muted_video_path = os.path.join(PROCESSED_DIR, f"muted_{video.filename}")
+        mute_video_segments(video, segments, muted_video_path)
 
         if not os.path.exists(muted_video_path):
             print("Muted video creation failed!")
             return jsonify({"message": "Failed to create muted video!"}), 500
 
         print("Generating TTS audio...")
-        tts_audio_path = generate_tts_audio(script, os.path.join(PROCESSED_DIR, 'tts_audio.mp3'))
+        tts_audio_path = generate_tts_audio(script, os.path.join(PROCESSED_DIR, f'tts_{video.filename}.mp3'))
 
         if not os.path.exists(tts_audio_path):
             print("TTS generation failed!")
             return jsonify({"message": "Failed to create TTS audio!"}), 500
 
-        final_video_path = os.path.join(PROCESSED_DIR, 'final_video.mp4')
+        final_video_path = os.path.join(PROCESSED_DIR, f'final_{video.filename}')
         print("Combining audio and video...")
         combine_audio_video(muted_video_path, tts_audio_path, final_video_path)
 
@@ -60,12 +68,18 @@ def upload_video():
             print("Final video creation failed!")
             return jsonify({"message": "Failed to create final video!"}), 500
 
-        return jsonify({"message": "Video processed successfully!", "video_path": final_video_path})
+        # Save processed video to MongoDB
+        with open(final_video_path, "rb") as f:
+            final_video_id = fs.put(f, filename=f'final_{video.filename}', content_type="video/mp4")
+
+        return jsonify({
+            "message": "Video processed successfully!",
+            "video_id": str(final_video_id)
+        })
 
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"message": f"An error occurred: {str(e)}"}), 500
-
 
 def mute_video_segments(video_path, segments, output_path):
     try:
@@ -102,28 +116,22 @@ def combine_audio_video(video_path, audio_path, output_path):
         print(f"Error combining audio and video: {e}")
         raise
 
-@app.route('/download/<filename>', methods=['GET'])
-def download_video(filename):
+@app.route('/download/<video_id>', methods=['GET'])
+def download_video(video_id):
     try:
-        file_path = os.path.join(PROCESSED_DIR, filename)
-        if not os.path.exists(file_path):
-            return jsonify({"message": "File not found!"}), 404
+        # Retrieve video from MongoDB GridFS
+        video_file = fs.get(ObjectId(video_id))
 
-        response = send_from_directory(PROCESSED_DIR, filename, as_attachment=True)
-
-        # Ensure the file is deleted after response is sent
-        @response.call_on_close
-        def remove_file():
-            try:
-                os.remove(file_path)
-                print(f"Deleted file: {file_path}")
-            except Exception as e:
-                print(f"Error deleting file: {e}")
-
-        return response
+        return send_file(
+            BytesIO(video_file.read()),
+            mimetype=video_file.content_type,
+            as_attachment=True,
+            download_name=video_file.filename
+        )
 
     except Exception as e:
-        return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+        print(f"Error: {e}")
+        return jsonify({"message": "File not found!"}), 404
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(debug=True)
