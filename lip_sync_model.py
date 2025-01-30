@@ -1,13 +1,13 @@
 import librosa
 import numpy as np
-import nltk
 from nltk.corpus import cmudict
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 import mediapipe as mp
 from pydub import AudioSegment
+import nltk
+nltk.download('cmudict')
 
-nltk.download('cmudict', quiet=True)
 cmu_dict = cmudict.dict()
 
 class LipSyncModel:
