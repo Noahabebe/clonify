@@ -33,12 +33,12 @@ def upload_video():
         if not video or not script:
             return jsonify({"message": "Missing video or script!"}), 400
 
-        # Save video to MongoDB GridFS
-        video_id = fs.put(video, filename=video.filename, content_type=video.content_type)
+        video_file_path = os.path.join(PROCESSED_DIR, video.filename)  # Save to disk first
+        video.save(video_file_path)  # Save uploaded file
 
         print("Extracting audio...")
-        audio_path = lip_sync_model.extract_audio_from_video(video)
-
+        audio_path = lip_sync_model.extract_audio_from_video(video_file_path)
+        
         print("Generating phonemes...")
         phonemes = lip_sync_model.get_phonemes_from_script(script)
 
@@ -47,7 +47,7 @@ def upload_video():
         print(f"Segments found: {segments}")
 
         muted_video_path = os.path.join(PROCESSED_DIR, f"muted_{video.filename}")
-        mute_video_segments(video, segments, muted_video_path)
+        mute_video_segments(video_file_path, segments, muted_video_path)
 
         if not os.path.exists(muted_video_path):
             print("Muted video creation failed!")
