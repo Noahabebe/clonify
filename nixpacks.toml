@@ -1,11 +1,1 @@
-[phases.setup]
-nixPkgs = ["ffmpeg", "libGL", "glibc", "glib"]
 
-[phases.install]
-cmds = [
-  "pip install --no-cache-dir -r requirements.txt",
-  "chmod +x start.sh"  # This fixes the permission issue
-]
-
-[phases.start]
-cmds = ["./start.sh"]
