@@ -10,4 +10,4 @@ cmds = [
 cmds = ["echo 'Build phase completed'"]
 
 [phases.start]
-cmds = ["./start.sh"]
+cmds = ["start.sh"]
