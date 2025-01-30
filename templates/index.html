@@ -4,24 +4,83 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lip Sync Model</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
-        <h1 class="text-2xl font-bold text-center mb-6">Upload Video and Script</h1>
-        <form action="/upload" method="post" enctype="multipart/form-data">
+        <h1 class="text-2xl font-bold text-center mb-6">Upload Video & Script</h1>
+
+        <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
             <div class="mb-4">
-                <label for="video" class="block text-gray-700">Choose Video:</label>
-                <input type="file" name="video" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                <label for="video" class="block text-gray-700 font-medium">Choose Video:</label>
+                <input type="file" name="video" id="video" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
             </div>
             <div class="mb-4">
-                <label for="script" class="block text-gray-700">Enter Script:</label>
-                <textarea name="script" rows="4" cols="50" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></textarea>
+                <label for="script" class="block text-gray-700 font-medium">Enter Script:</label>
+                <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></textarea>
             </div>
+
             <button type="submit" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200">Upload</button>
         </form>
+
+        <!-- Progress Indicator -->
+        <div id="progress" class="hidden mt-4 text-center text-gray-600">
+            <span class="loader animate-spin border-4 border-blue-500 border-t-transparent rounded-full w-6 h-6 inline-block"></span>
+            Processing your video...
+        </div>
+
+        <!-- Success & Error Messages -->
+        <div id="message" class="hidden mt-4 text-center text-white p-2 rounded"></div>
+
+        <!-- Download Button -->
+        <div id="downloadContainer" class="hidden mt-4 text-center">
+            <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200">Download Processed Video</a>
+        </div>
     </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const formData = new FormData(this);
+            const progress = document.getElementById('progress');
+            const message = document.getElementById('message');
+            const downloadContainer = document.getElementById('downloadContainer');
+            const downloadLink = document.getElementById('downloadLink');
+
+            progress.classList.remove('hidden'); // Show progress
+            message.classList.add('hidden');
+            downloadContainer.classList.add('hidden');
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                progress.classList.add('hidden'); // Hide progress
+
+                if (response.ok) {
+                    message.textContent = "Video processed successfully!";
+                    message.classList.remove('hidden', 'bg-red-500');
+                    message.classList.add('bg-green-500');
+
+                    downloadLink.href = `/download/final_video.mp4`; // Adjust filename if needed
+                    downloadContainer.classList.remove('hidden');
+                } else {
+                    message.textContent = result.message;
+                    message.classList.remove('hidden', 'bg-green-500');
+                    message.classList.add('bg-red-500');
+                }
+            } catch (error) {
+                progress.classList.add('hidden');
+                message.textContent = "An error occurred. Please try again.";
+                message.classList.remove('hidden', 'bg-green-500');
+                message.classList.add('bg-red-500');
+            }
+        });
+    </script>
 </body>
 </html>
- 
