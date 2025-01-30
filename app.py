@@ -93,5 +93,28 @@ def combine_audio_video(video_path, audio_path, output_path):
         print(f"Error combining audio and video: {e}")
         raise
 
+@app.route('/download/<filename>', methods=['GET'])
+def download_video(filename):
+    try:
+        file_path = os.path.join(PROCESSED_DIR, filename)
+        if not os.path.exists(file_path):
+            return jsonify({"message": "File not found!"}), 404
+
+        response = send_from_directory(PROCESSED_DIR, filename, as_attachment=True)
+
+        # Ensure the file is deleted after response is sent
+        @response.call_on_close
+        def remove_file():
+            try:
+                os.remove(file_path)
+                print(f"Deleted file: {file_path}")
+            except Exception as e:
+                print(f"Error deleting file: {e}")
+
+        return response
+
+    except Exception as e:
+        return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+
 if __name__ == "__main__":
     app.run(debug=True)
