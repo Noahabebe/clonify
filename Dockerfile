@@ -19,4 +19,4 @@ RUN apt-get update && apt-get install -y \
 EXPOSE 5000
 
 # Command to run Gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "wsgi:app"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "wsgi:app"]
