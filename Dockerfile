@@ -13,10 +13,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install system dependencies for FFmpeg and OpenCV compatibility
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
-    ffmpeg
+    ffmpeg && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Expose port 5000
 EXPOSE 5000
 
-# Command to run Gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "wsgi:app"]
+# Command to run Gunicorn with Gevent workers
+CMD ["gunicorn", "-w", "4", "-k", "gevent", "--timeout", "120", "-b", "0.0.0.0:5000", "app:app"]
