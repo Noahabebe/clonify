@@ -1,7 +1,6 @@
 Flask
 numpy
 pymongo
-gridfs
 ffmpeg-python
 vosk
 gradio_client
