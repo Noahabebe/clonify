@@ -21,7 +21,7 @@ client_gradio = Client("https://anhhayghen-musetalkv.hf.space/")
 
 @app.route('/')
 def index():
-    return "Welcome to Lip Sync API"
+    return send_from_directory('templates', 'index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_video():
