@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lip Sync Model</title>
+    <title>Lip Sync & Speech Verification</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
         <h1 class="text-2xl font-bold text-center mb-6">Upload Video & Script</h1>
 
+        <!-- Upload Form -->
         <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
             <div class="mb-4">
                 <label for="video" class="block text-gray-700 font-medium">Choose Video:</label>
@@ -20,7 +23,6 @@
                 <label for="script" class="block text-gray-700 font-medium">Enter Script:</label>
                 <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></textarea>
             </div>
-
             <button type="submit" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200">Upload</button>
         </form>
 
@@ -37,37 +39,47 @@
         <div id="downloadContainer" class="hidden mt-4 text-center">
             <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200">Download Processed Video</a>
         </div>
+
+        <hr class="my-6">
+
+        <!-- Face Tracking & Speech Verification -->
+        <h2 class="text-xl font-bold text-center mb-4">Face Tracking & Speech</h2>
+        <video id="videoElement" class="border border-gray-300 rounded w-full" autoplay></video>
+
+        <div class="mt-4 text-center">
+            <button id="startRecording" class="bg-purple-500 text-white font-bold py-2 px-4 rounded hover:bg-purple-600 transition duration-200">Start Speaking</button>
+            <button id="stopRecording" class="bg-red-500 text-white font-bold py-2 px-4 rounded hover:bg-red-600 transition duration-200 hidden">Stop & Analyze</button>
+        </div>
+
+        <p id="transcript" class="mt-4 text-gray-700 text-center">Speech will appear here...</p>
     </div>
 
     <script>
-        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+        const form = document.getElementById('uploadForm');
+        const progress = document.getElementById('progress');
+        const message = document.getElementById('message');
+        const downloadContainer = document.getElementById('downloadContainer');
+        const downloadLink = document.getElementById('downloadLink');
+
+        form.addEventListener('submit', async function(event) {
             event.preventDefault();
-
             const formData = new FormData(this);
-            const progress = document.getElementById('progress');
-            const message = document.getElementById('message');
-            const downloadContainer = document.getElementById('downloadContainer');
-            const downloadLink = document.getElementById('downloadLink');
-
-            progress.classList.remove('hidden'); // Show progress
+            
+            progress.classList.remove('hidden'); 
             message.classList.add('hidden');
             downloadContainer.classList.add('hidden');
 
             try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
+                const response = await fetch('/upload', { method: 'POST', body: formData });
                 const result = await response.json();
-                progress.classList.add('hidden'); // Hide progress
+                progress.classList.add('hidden'); 
 
                 if (response.ok) {
                     message.textContent = "Video processed successfully!";
                     message.classList.remove('hidden', 'bg-red-500');
                     message.classList.add('bg-green-500');
 
-                    downloadLink.href = `/download/final_video.mp4`; // Adjust filename if needed
+                    downloadLink.href = `/download/${result.video_id}`;
                     downloadContainer.classList.remove('hidden');
                 } else {
                     message.textContent = result.message;
@@ -81,6 +93,77 @@
                 message.classList.add('bg-red-500');
             }
         });
+
+        // Face Tracking Initialization
+        async function startFaceTracking() {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+
+            const videoElement = document.getElementById('videoElement');
+            navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+                videoElement.srcObject = stream;
+            });
+
+            videoElement.addEventListener('play', () => {
+                setInterval(async () => {
+                    const detections = await faceapi.detectAllFaces(videoElement, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+                    console.log(detections);
+
+                    const movements = [];
+                    detections.forEach(d => {
+                        if (d.landmarks) {
+                            const nose = d.landmarks.getNose();
+                            if (nose[0].x < 200) movements.push("left");
+                            if (nose[0].x > 400) movements.push("right");
+                            if (nose[0].y < 150) movements.push("up");
+                            if (nose[0].y > 300) movements.push("down");
+                        }
+                    });
+
+                    fetch("/track_face", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ movements })
+                    }).then(res => res.json()).then(console.log);
+                }, 100);
+            });
+        }
+
+        // Speech Recognition
+        let mediaRecorder;
+        let audioChunks = [];
+
+        document.getElementById('startRecording').addEventListener('click', () => {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.start();
+
+                document.getElementById('startRecording').classList.add('hidden');
+                document.getElementById('stopRecording').classList.remove('hidden');
+            });
+        });
+
+        document.getElementById('stopRecording').addEventListener('click', () => {
+            mediaRecorder.stop();
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const formData = new FormData();
+                formData.append("audio", audioBlob);
+                formData.append("expected_text", "hello world");
+
+                fetch("/analyze_audio", { method: "POST", body: formData })
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('transcript').innerText = `You said: "${data.transcript}" (Correct: ${data.correct})`;
+                    });
+
+                document.getElementById('startRecording').classList.remove('hidden');
+                document.getElementById('stopRecording').classList.add('hidden');
+            };
+        });
+
+        startFaceTracking();
     </script>
 </body>
 </html>
