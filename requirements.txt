@@ -6,3 +6,4 @@ vosk
 gradio_client
 tts
 bson
+gunicorn
