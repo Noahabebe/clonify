@@ -1,5 +1,4 @@
 Flask
-moviepy==1.0.3
 librosa
 nltk
 mediapipe
