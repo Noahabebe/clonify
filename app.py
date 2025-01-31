@@ -1,13 +1,14 @@
 import os
-from flask import Flask, request, jsonify, send_file, send_from_directory
+import wave
+import numpy as np
+import ffmpeg
+from flask import Flask, request, jsonify, send_from_directory
 from gradio_client import Client, file
 from tts.generate_tts import generate_tts_audio
 from pymongo import MongoClient
 import gridfs
 from bson.objectid import ObjectId
-import wave
-import numpy as np
-import deepspeech
+from vosk import Model, KaldiRecognizer
 
 app = Flask(__name__)
 
@@ -16,12 +17,9 @@ client = MongoClient("mongodb://root:OT9Xh66yfE3wkLuiTv59zpt1dI96zEgXTk2VQb8EHM1
 db = client["video_storage"]
 fs = gridfs.GridFS(db)
 
-# Load DeepSpeech Model
-MODEL_PATH = "deepspeech_model.pbmm"
-SCORER_PATH = "deepspeech.scorer"
-
-ds = deepspeech.Model(MODEL_PATH)
-ds.enableExternalScorer(SCORER_PATH)
+# Load Vosk Model
+VOSK_MODEL_PATH = "vosk-model"
+model = Model(VOSK_MODEL_PATH)
 
 # Local Directories for Processed Files
 PROCESSED_DIR = 'static/processed_videos'
@@ -43,24 +41,27 @@ def analyze_audio():
         if not audio or not expected_text:
             return jsonify({"message": "Missing audio file or expected text!"}), 400
 
-        # Save audio
+        # Save and preprocess audio
         audio_path = os.path.join(PROCESSED_DIR, "input_audio.wav")
         audio.save(audio_path)
 
-        # Convert audio for DeepSpeech
-        with wave.open(audio_path, 'rb') as wf:
-            frames = wf.readframes(wf.getnframes())
-            audio_data = np.frombuffer(frames, dtype=np.int16)
+        # Convert audio to 16kHz mono using ffmpeg
+        processed_audio_path = os.path.join(PROCESSED_DIR, "processed_audio.wav")
+        ffmpeg.input(audio_path).output(processed_audio_path, ar=16000, ac=1).run(overwrite_output=True)
 
-        # Perform Speech Recognition
-        transcript = ds.stt(audio_data)
+        # Perform Speech Recognition with Vosk
+        with wave.open(processed_audio_path, 'rb') as wf:
+            rec = KaldiRecognizer(model, wf.getframerate())
+            rec.AcceptWaveform(wf.readframes(wf.getnframes()))
+            transcript = rec.Result()
 
-        # Compare with expected pronunciation
-        correctness = transcript.strip().lower() == expected_text.strip().lower()
+        # Extract transcript text
+        transcript_text = eval(transcript).get("text", "").strip()
+        correctness = expected_text.strip().lower() in transcript_text.lower()
 
         return jsonify({
             "message": "Analysis complete",
-            "transcript": transcript,
+            "transcript": transcript_text,
             "correct": correctness
         })
 
@@ -76,8 +77,6 @@ def track_face():
             return jsonify({"message": "Invalid data!"}), 400
 
         movements = data["movements"]
-
-        # Example validation: Check if all required movements are present
         required_movements = {"left", "right", "up", "down"}
         passed = all(move in movements for move in required_movements)
 
@@ -123,6 +122,16 @@ def upload_video():
 
     except Exception as e:
         return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+
+@app.route('/download/<video_id>', methods=['GET'])
+def download_video(video_id):
+    """Handles video downloads."""
+    try:
+        file_data = fs.get(ObjectId(video_id))
+        return send_file(file_data, download_name=f"processed_video_{video_id}.mp4", as_attachment=True)
+
+    except Exception as e:
+        return jsonify({"message": f"Error downloading video: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
