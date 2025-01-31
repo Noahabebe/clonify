@@ -6,9 +6,11 @@ from scipy.spatial.distance import euclidean
 import mediapipe as mp
 from pydub import AudioSegment
 import nltk
-nltk.download('cmudict')
+nltk.download('cmudict', force=True)
 
+from nltk.corpus import cmudict
 cmu_dict = cmudict.dict()
+
 
 class LipSyncModel:
     def __init__(self):
