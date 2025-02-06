@@ -8,7 +8,7 @@ from tts.generate_tts import generate_tts_audio
 from pymongo import MongoClient
 import gridfs
 from bson.objectid import ObjectId
-from vosk import Model, KaldiRecognizer
+from groq import Groq  # Groq integration
 
 app = Flask(__name__)
 
@@ -17,9 +17,8 @@ client = MongoClient("mongodb://root:OT9Xh66yfE3wkLuiTv59zpt1dI96zEgXTk2VQb8EHM1
 db = client["video_storage"]
 fs = gridfs.GridFS(db)
 
-# Load Vosk Model
-VOSK_MODEL_PATH = "vosk-model"
-model = Model(VOSK_MODEL_PATH)
+# Groq Setup
+groq_client = Groq()
 
 # Local Directories for Processed Files
 PROCESSED_DIR = 'static/processed_videos'
@@ -33,7 +32,7 @@ def index():
 
 @app.route('/analyze_audio', methods=['POST'])
 def analyze_audio():
-    """Analyzes audio pronunciation and compares it to expected phonemes."""
+    """Analyzes audio pronunciation and compares it to expected phonemes using Groq."""
     try:
         audio = request.files.get('audio')
         expected_text = request.form.get('expected_text')
@@ -49,14 +48,18 @@ def analyze_audio():
         processed_audio_path = os.path.join(PROCESSED_DIR, "processed_audio.wav")
         ffmpeg.input(audio_path).output(processed_audio_path, ar=16000, ac=1).run(overwrite_output=True)
 
-        # Perform Speech Recognition with Vosk
-        with wave.open(processed_audio_path, 'rb') as wf:
-            rec = KaldiRecognizer(model, wf.getframerate())
-            rec.AcceptWaveform(wf.readframes(wf.getnframes()))
-            transcript = rec.Result()
+        # Perform transcription with Groq
+        with open(processed_audio_path, "rb") as file:
+            transcription = groq_client.audio.transcriptions.create(
+                file=(processed_audio_path, file.read()),
+                model="whisper-large-v3-turbo",  # Replace with appropriate model
+                prompt="Specify context or spelling",  # Optional
+                response_format="json",  # Optional
+                language="en",  # Optional
+                temperature=0.0  # Optional
+            )
 
-        # Extract transcript text
-        transcript_text = eval(transcript).get("text", "").strip()
+        transcript_text = transcription['text'].strip()
         correctness = expected_text.strip().lower() in transcript_text.lower()
 
         return jsonify({
