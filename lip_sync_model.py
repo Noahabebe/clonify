@@ -9,7 +9,7 @@ from bson.objectid import ObjectId
 app = Flask(__name__)
 
 # MongoDB Setup
-client = MongoClient("your_mongodb_connection_string")  # Change accordingly
+client = MongoClient("mongodb://root:OT9Xh66yfE3wkLuiTv59zpt1dI96zEgXTk2VQb8EHM1yPOUKuhu5tZq7PKbHy2hV@wc4cw8ck4ocskgk0oww08w0c:27017/?directConnection=true")  # Change accordingly
 db = client["video_storage"]
 fs = gridfs.GridFS(db)
 
