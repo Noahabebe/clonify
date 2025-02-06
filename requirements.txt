@@ -7,3 +7,4 @@ gradio_client
 tts
 gunicorn
 gtts
+groq
