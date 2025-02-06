@@ -5,6 +5,5 @@ ffmpeg-python
 vosk
 gradio_client
 tts
-bson
 gunicorn
 gtts
