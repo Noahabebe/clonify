@@ -9,3 +9,5 @@ gunicorn
 gtts
 groq
 requests
+pydub
+librosa
