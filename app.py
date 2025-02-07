@@ -3,17 +3,19 @@ import requests
 import numpy as np
 import librosa
 import ffmpeg
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from pydub import AudioSegment
 from pymongo import MongoClient
 import gridfs
 from bson.objectid import ObjectId
-from nltk.corpus import cmudict
 import nltk
 import mediapipe as mp
+from fastdtw import fastdtw
+from scipy.spatial.distance import euclidean
 
+# Download CMU Dictionary if not available
 nltk.download('cmudict', force=True)
-cmu_dict = cmudict.dict()
+cmu_dict = nltk.corpus.cmudict.dict()
 
 app = Flask(__name__)
 
@@ -25,47 +27,85 @@ fs = gridfs.GridFS(db)
 PROCESSED_DIR = 'static/processed_videos'
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-# LipSyncModel Class as per your custom code
+# Define the path to the models directory
+MODELS_DIR = os.path.join(os.getcwd(), 'models')
+
+# ---------------------------
+# LipSyncModel Class
+# ---------------------------
 class LipSyncModel:
     def __init__(self):
         self.face_mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
 
     def text_to_phonemes(self, word: str) -> list:
+        """Convert a word into phonemes using CMU Dictionary with fallback."""
         word = word.lower()
-        return cmu_dict.get(word, [[]])[0]
+        phoneme_list = cmu_dict.get(word, [[]])
+        if phoneme_list and phoneme_list[0]:  # Ensure phonemes exist
+            return phoneme_list[0]
+        return ["AH0"]  # Default phoneme fallback
 
     def extract_audio_from_video(self, video_path: str) -> str:
+        """Extract audio from a video file and convert to WAV format."""
         audio_path = video_path.replace('.mp4', '.wav')
-        audio = AudioSegment.from_file(video_path, format="mp4")
-        audio.export(audio_path, format="wav")
-        return audio_path
+        try:
+            audio = AudioSegment.from_file(video_path, format="mp4")
+            audio.export(audio_path, format="wav")
+            
+            # Validate audio extraction
+            y, sr = librosa.load(audio_path, sr=22050)
+            if len(y) == 0:
+                raise ValueError("Audio extraction failed: No audio data loaded")
+            
+            return audio_path
+        except Exception as e:
+            print(f"Error extracting audio: {e}")
+            return None
 
     def get_phonemes_from_script(self, script: str) -> list:
+        """Extract phonemes from the script with logging."""
         phonemes = []
         for word in script.split():
-            phonemes.extend(self.text_to_phonemes(word))
+            word_phonemes = self.text_to_phonemes(word)
+            print(f"Word: {word}, Phonemes: {word_phonemes}")  # Debugging
+            phonemes.extend(word_phonemes)
         return phonemes
 
     def find_matching_audio_segments(self, audio_path: str, phonemes: list) -> list:
+        """Match phonemes to audio segments using MFCC features."""
+        if not os.path.exists(audio_path):
+            print(f"Error: Audio file {audio_path} not found")
+            return []
+
         segments = []
         y, sr = librosa.load(audio_path, sr=22050)
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+        
         for phoneme in phonemes:
             start, end = self.find_audio_segment_for_word(mfccs, phoneme)
             segments.append((start, end))
+        
         return segments
 
     def find_audio_segment_for_word(self, mfccs: np.ndarray, phoneme: str) -> tuple:
+        """Find time segment in audio matching phoneme using DTW."""
         word_features = self.phoneme_to_feature_matrix([phoneme])
-        if word_features.shape[1] != mfccs.T.shape[1]:
-            return 0, 0
+
+        if word_features.shape[1] == 0 or mfccs.shape[1] == 0:
+            return 0, 0  # Prevent out-of-range errors
+
         distance, path = fastdtw(word_features, mfccs.T, dist=euclidean)
+        if len(path) == 0:
+            return 0, 0
+
         start_idx, end_idx = path[0][0], path[-1][0]
         start_time = librosa.frames_to_time(start_idx, sr=22050)
         end_time = librosa.frames_to_time(end_idx, sr=22050)
+
         return start_time, end_time
 
     def phoneme_to_feature_matrix(self, phonemes: list) -> np.ndarray:
+        """Convert phonemes to feature vectors."""
         phoneme_to_vector = {
             "AH0": [1, 0, 0], "EH0": [0, 1, 0], "IH0": [0, 0, 1],
             "AH1": [1, 1, 0], "EH1": [0, 1, 1], "IH1": [1, 0, 1], "AY1": [1, 1, 1]
@@ -81,14 +121,10 @@ lip_sync_model = LipSyncModel()
 def index():
     return send_from_directory('templates', 'index.html')
 
-# Define the path to the models directory
-MODELS_DIR = os.path.join(os.getcwd(), 'models')
-
 @app.route('/models/<path:filename>')
 def serve_model(filename):
     """Serve model files from the 'models' directory."""
     return send_from_directory(MODELS_DIR, filename)
-    
 
 @app.route('/upload', methods=['POST'])
 def upload_video():
@@ -102,23 +138,15 @@ def upload_video():
         video_file_path = os.path.join(PROCESSED_DIR, video_filename)
         video.save(video_file_path)
 
-        # Step 1: Extract audio from video
         extracted_audio_path = lip_sync_model.extract_audio_from_video(video_file_path)
+        if not extracted_audio_path:
+            return jsonify({"message": "Audio extraction failed!"}), 500
 
-        # Step 2: Generate phonemes from the script
         phonemes = lip_sync_model.get_phonemes_from_script(script)
-
-        # Step 3: Match audio segments with phonemes
         audio_segments = lip_sync_model.find_matching_audio_segments(extracted_audio_path, phonemes)
 
-        # Step 4: Perform voice cloning (OpenVoice integration)
-        # Assume voice cloning is done via OpenVoice API or local setup and the synthesized audio is returned
-        cloned_audio_path = generate_voice_cloning_audio(script)
+        synced_video_path = apply_lip_sync_to_video(video_file_path, extracted_audio_path, audio_segments)
 
-        # Step 5: Apply lip sync to the video with the generated audio and face tracking
-        synced_video_path = apply_lip_sync_to_video(video_file_path, cloned_audio_path, audio_segments)
-
-        # Step 6: Save final video to MongoDB (GridFS)
         with open(synced_video_path, "rb") as f:
             final_video_id = fs.put(f, filename=f'final_{video_filename}', content_type="video/mp4")
 
@@ -127,46 +155,9 @@ def upload_video():
     except Exception as e:
         return jsonify({"message": f"An error occurred: {str(e)}"}), 500
 
-def generate_voice_cloning_audio(script: str, video_path: str) -> str:
-    try:
-        # Step 1: Extract audio from the provided video file
-        lip_sync_model = LipSyncModel()
-        extracted_audio_path = lip_sync_model.extract_audio_from_video(video_path)
-        
-        # Step 2: Select the language for voice cloning (you can replace 'en' with any supported language)
-        language = 'en'  # Example language: English
-        
-        # Step 3: Initialize the client to interact with the OpenVoice model API
-        client = Client("luigi12345/Voice-Clone-Multilingual")
-
-        # Step 4: Call the API to generate the voice-cloned audio from the script and extracted audio
-        result = client.predict(
-            text=script,  # The script to be cloned
-            speaker_wav=handle_file(extracted_audio_path),  # Path to the extracted audio file
-            language=language,  # Language of the script
-            api_name="/predict"  # API endpoint for voice cloning
-        )
-        
-        # Step 5: The API response contains a filepath to the generated audio file
-        cloned_audio_path = result[0]
-        
-        # Step 6: Save the audio file locally
-        cloned_audio_local_path = "static/cloned_audio.wav"
-        response = requests.get(cloned_audio_path, stream=True)
-        with open(cloned_audio_local_path, 'wb') as out_file:
-            out_file.write(response.content)
-        
-        return cloned_audio_local_path
-    
-    except Exception as e:
-        print(f"Error generating voice cloning audio: {str(e)}")
-        return None
-
-# Lip Sync function to apply lip sync to video
 def apply_lip_sync_to_video(video_path: str, audio_path: str, audio_segments: list) -> str:
-    # Lip sync logic based on face tracking and the audio segments
+    """Apply lip sync to the video with the processed audio."""
     synced_video_path = video_path.replace(".mp4", "_synced.mp4")
-    # Process video with audio and lip sync
     ffmpeg.input(video_path).output(synced_video_path, audio=audio_path).run(overwrite_output=True)
     return synced_video_path
 
@@ -174,12 +165,7 @@ def apply_lip_sync_to_video(video_path: str, audio_path: str, audio_segments: li
 def download_video(video_id):
     try:
         video_file = fs.get(ObjectId(video_id))
-        return send_file(
-            video_file,
-            mimetype=video_file.content_type,
-            as_attachment=True,
-            download_name=video_file.filename
-        )
+        return send_file(video_file, mimetype=video_file.content_type, as_attachment=True, download_name=video_file.filename)
     except Exception as e:
         return jsonify({"message": f"Error downloading video: {str(e)}"}), 500
 
