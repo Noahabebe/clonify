@@ -12,4 +12,4 @@ requests
 pydub
 librosa
 mediapipe
-
+fastdtw
