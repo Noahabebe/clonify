@@ -199,7 +199,6 @@
     window.onload = async function() {
       try {
         await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
         initFaceTracking();  // Call the function after libraries are loaded
       } catch (error) {
         console.error("Error loading face-api models:", error);
