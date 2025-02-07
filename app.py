@@ -35,6 +35,10 @@ def index():
     # Serve the webpage (assumes index.html is in the "templates" folder)
     return send_from_directory('templates', 'index.html')
 
+@app.route('/models/<path:filename>')
+def serve_models(filename):
+    return send_from_directory(os.path.join(app.root_path, '/models'), filename)
+
 @app.route('/track_face', methods=['POST'])
 def track_face():
     """
