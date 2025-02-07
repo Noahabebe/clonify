@@ -36,6 +36,8 @@
       pointer-events: none;
       background: url('static/face_structure.png') center center no-repeat;
       background-size: contain;
+      opacity: 0; /* Initially hidden */
+      transition: opacity 0.3s ease-in-out;
     }
   </style>
 </head>
@@ -123,7 +125,6 @@
   
   <!-- Scripts -->
   <!-- Load TensorFlow.js and face-api.js -->
-  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
   
   <script>
@@ -193,12 +194,21 @@
       }
     });
     
+    // Wait for face-api.js to load before calling the initialization function
+    window.onload = async function() {
+      try {
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+        initFaceTracking();  // Call the function after libraries are loaded
+      } catch (error) {
+        console.error("Error loading face-api models:", error);
+      }
+    };
+    
     // Face Tracking and Video Recording Logic
-    async function initFaceTracking() {
-      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-      
+    function initFaceTracking() {
       const trackingVideo = document.getElementById('trackingVideo');
+      const faceGuide = document.getElementById('faceGuide'); // Face guide element
       let stream;
       navigator.mediaDevices.getUserMedia({ video: true })
         .then(s => {
@@ -223,61 +233,30 @@
             };
             mediaRecorder.onstop = function() {
               recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
-              console.log("Recording stopped, blob available", recordedBlob);
+              console.log("Recording stopped. Blob size: ", recordedBlob.size);
             };
             mediaRecorder.start();
             startBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
-            // Automatically stop recording after 30 seconds
-            recordingTimeout = setTimeout(() => {
-              if (mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop();
-                startBtn.classList.remove('hidden');
-                stopBtn.classList.add('hidden');
-              }
-            }, 30000);
+            
+            // Show face guide when recording starts
+            faceGuide.style.opacity = 1;
+            
+            recordingTimeout = setTimeout(() => { mediaRecorder.stop(); }, 30000);  // Stop recording after 30 seconds
           });
           
           stopBtn.addEventListener('click', () => {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-              mediaRecorder.stop();
-              startBtn.classList.remove('hidden');
-              stopBtn.classList.add('hidden');
-              clearTimeout(recordingTimeout);
-            }
+            clearTimeout(recordingTimeout);
+            mediaRecorder.stop();
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            
+            // Hide face guide when recording stops
+            faceGuide.style.opacity = 0;
           });
         })
-        .catch(err => console.error("Error accessing webcam:", err));
-      
-      // Run face detection periodically and send movement data (if any)
-      trackingVideo.addEventListener('play', () => {
-        setInterval(async () => {
-          const detections = await faceapi.detectAllFaces(trackingVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
-          const movements = [];
-          detections.forEach(det => {
-            if (det.landmarks) {
-              const nose = det.landmarks.getNose();
-              if (nose[0].x < 150) movements.push("left");
-              if (nose[0].x > 170) movements.push("right");
-              if (nose[0].y < 100) movements.push("up");
-              if (nose[0].y > 140) movements.push("down");
-            }
-          });
-          if (movements.length > 0) {
-            fetch("/track_face", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ movements })
-            })
-            .then(res => res.json())
-            .then(data => console.log("Face tracking response:", data))
-            .catch(err => console.error("Error sending face tracking data:", err));
-          }
-        }, 500);
-      });
+        .catch(error => console.error("Error accessing webcam:", error));
     }
-    
-    initFaceTracking();
   </script>
 </body>
 </html>
