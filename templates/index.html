@@ -4,22 +4,84 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lip Sync & Speech Verification</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <style>
+    /* Modal Styles */
+    #modalOverlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    #modalContent {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 0.5rem;
+      max-width: 600px;
+      width: 90%;
+    }
+    /* Face Guide Overlay (make sure you have a face structure image at static/face_structure.png) */
+    #faceGuide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 320px;
+      height: 240px;
+      pointer-events: none;
+      background: url('static/face_structure.png') center center no-repeat;
+      background-size: contain;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
+  <!-- Privacy Policy Modal -->
+  <div id="modalOverlay">
+    <div id="modalContent" class="p-6">
+      <h2 class="text-xl font-bold mb-4">Privacy Policy & Terms of Use</h2>
+      <p class="mb-4 text-sm">
+        By using this website, you consent to have your voice and video recorded for voice cloning and lip-syncing purposes.
+        Your data will be used solely for generating a synthetic video matching your voice and will not be shared with third parties.
+        Please read our full <a href="#" class="text-blue-500 underline">Privacy Policy</a> and <a href="#" class="text-blue-500 underline">Terms of Use</a>.
+      </p>
+      <div class="flex justify-end space-x-4">
+        <button id="declineBtn" class="bg-red-500 text-white px-4 py-2 rounded">Decline</button>
+        <button id="acceptBtn" class="bg-green-500 text-white px-4 py-2 rounded">Accept & Continue</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Main Content (hidden until user accepts) -->
+  <div id="mainContent" class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full hidden">
     <h1 class="text-2xl font-bold text-center mb-6">Lip Sync & Speech Verification</h1>
+    
+    <!-- Instructions -->
+    <div class="mb-4 p-4 border rounded bg-gray-50">
+      <p class="mb-2 font-semibold">Instructions:</p>
+      <ul class="list-disc list-inside text-sm">
+        <li>Record a video of <span class="font-bold">up to 30 seconds</span>.</li>
+        <li>Align your face within the on‑screen guide below.</li>
+        <li>Recite the following tongue twister for best voice cloning and phoneme coverage:</li>
+        <li class="italic">
+          "She sells seashells by the seashore; Peter Piper picked a peck of pickled peppers; How can a clam cram in a clean cream can?"
+        </li>
+      </ul>
+    </div>
     
     <!-- Upload Form for Sample Video and Custom Script -->
     <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
       <div class="mb-4">
-        <label for="video" class="block text-gray-700 font-medium">Sample Video (30s):</label>
-        <input type="file" name="video" id="video" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+        <label for="video" class="block text-gray-700 font-medium">Sample Video (max 30s):</label>
+        <input type="file" name="video" id="video" accept="video/*" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
       </div>
       <div class="mb-4">
-        <label for="script" class="block text-gray-700 font-medium">Custom Script:</label>
-        <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="Enter your custom script here..."></textarea>
+        <label for="script" class="block text-gray-700 font-medium">Custom Script (include the tongue twister):</label>
+        <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="E.g., She sells seashells by the seashore; Peter Piper picked a peck of pickled peppers; How can a clam cram in a clean cream can?"></textarea>
       </div>
       <div class="mb-4">
         <label for="toggle_face_movement" class="inline-flex items-center">
@@ -43,9 +105,40 @@
     <div id="downloadContainer" class="hidden mt-4 text-center">
       <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200">Download Processed Video</a>
     </div>
+    
+    <!-- Face Tracking Section -->
+    <div class="mt-6 relative">
+      <p class="text-center mb-2 text-sm font-semibold">Align your face within the guide below:</p>
+      <video id="trackingVideo" width="320" height="240" autoplay class="rounded border"></video>
+      <!-- Face structure overlay -->
+      <div id="faceGuide"></div>
+    </div>
   </div>
   
+  <!-- Scripts -->
+  <!-- Load TensorFlow.js and face-api.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+  
   <script>
+    // Privacy Modal Logic
+    const modalOverlay = document.getElementById('modalOverlay');
+    const acceptBtn = document.getElementById('acceptBtn');
+    const declineBtn = document.getElementById('declineBtn');
+    const mainContent = document.getElementById('mainContent');
+    
+    acceptBtn.addEventListener('click', () => {
+      modalOverlay.style.display = 'none';
+      mainContent.classList.remove('hidden');
+    });
+    
+    declineBtn.addEventListener('click', () => {
+      alert("You must accept the Privacy Policy and Terms of Use to use this website.");
+      // Redirect to a decline page or disable functionality
+      window.location.href = "https://www.example.com/declined"; // Replace with your decline page if available.
+    });
+    
+    // Upload Form Handling
     const form = document.getElementById('uploadForm');
     const progress = document.getElementById('progress');
     const message = document.getElementById('message');
@@ -84,6 +177,48 @@
         message.classList.add('bg-red-500');
       }
     });
+    
+    // Face Tracking Logic
+    async function initFaceTracking() {
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+      
+      const trackingVideo = document.getElementById('trackingVideo');
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          trackingVideo.srcObject = stream;
+          trackingVideo.play();
+        })
+        .catch(err => console.error("Error accessing webcam:", err));
+      
+      trackingVideo.addEventListener('play', () => {
+        setInterval(async () => {
+          const detections = await faceapi.detectAllFaces(trackingVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+          const movements = [];
+          detections.forEach(det => {
+            if (det.landmarks) {
+              const nose = det.landmarks.getNose();
+              if (nose[0].x < 150) movements.push("left");
+              if (nose[0].x > 170) movements.push("right");
+              if (nose[0].y < 100) movements.push("up");
+              if (nose[0].y > 140) movements.push("down");
+            }
+          });
+          if (movements.length > 0) {
+            fetch("/track_face", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ movements })
+            })
+            .then(res => res.json())
+            .then(data => console.log("Face tracking response:", data))
+            .catch(err => console.error("Error sending face tracking data:", err));
+          }
+        }, 500);
+      });
+    }
+    
+    initFaceTracking();
   </script>
 </body>
 </html>
