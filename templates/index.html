@@ -124,9 +124,10 @@
   </div>
   
   <!-- Scripts -->
-  <!-- Load TensorFlow.js and face-api.js -->
+  <!-- Load face-api.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
-
+  <!-- Load FFmpeg.wasm -->
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.5/dist/ffmpeg.min.js"></script>
   
   <script>
     // Privacy Modal Logic
@@ -148,7 +149,7 @@
     // Global variable to store recorded video blob
     let recordedBlob = null;
     
-    // Upload Form Handling (Modified to use recorded video)
+    // Upload Form Handling (Modified to convert the recording to MP4)
     const form = document.getElementById('uploadForm');
     const progress = document.getElementById('progress');
     const message = document.getElementById('message');
@@ -161,16 +162,37 @@
         alert("Please record a video before submitting.");
         return;
       }
-      const formData = new FormData();
-      formData.append('video', recordedBlob, 'recorded_video.webm');
-      formData.append('script', document.getElementById('script').value);
-      formData.append('toggle_face_movement', document.getElementById('toggle_face_movement').checked);
       
       progress.classList.remove('hidden');
       message.classList.add('hidden');
       downloadContainer.classList.add('hidden');
-      
+
       try {
+        // Initialize FFmpeg
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        const ffmpeg = createFFmpeg({ log: true });
+        if (!ffmpeg.isLoaded()) {
+          await ffmpeg.load();
+        }
+
+        // Write the recorded WebM blob to the FFmpeg file system
+        ffmpeg.FS('writeFile', 'input.webm', await fetchFile(recordedBlob));
+
+        // Run FFmpeg command to convert WebM to MP4
+        // The command below uses libx264 and AAC for encoding.
+        await ffmpeg.run('-i', 'input.webm', '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', 'output.mp4');
+
+        // Read the converted MP4 file from the FFmpeg file system
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+
+        // Build the form data with the converted MP4 video
+        const formData = new FormData();
+        formData.append('video', mp4Blob, 'recorded_video.mp4');
+        formData.append('script', document.getElementById('script').value);
+        formData.append('toggle_face_movement', document.getElementById('toggle_face_movement').checked);
+        
+        // Upload the form data
         const response = await fetch('/upload', { method: 'POST', body: formData });
         const result = await response.json();
         progress.classList.add('hidden');
@@ -189,6 +211,7 @@
         }
       } catch (error) {
         progress.classList.add('hidden');
+        console.error("Error during video conversion/upload:", error);
         message.textContent = "An error occurred. Please try again.";
         message.classList.remove('hidden', 'bg-green-500');
         message.classList.add('bg-red-500');
@@ -225,6 +248,7 @@
           
           startBtn.addEventListener('click', () => {
             recordedChunks = [];
+            // Specify WebM format; we will convert it to MP4 later.
             mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
             mediaRecorder.ondataavailable = function(e) {
               if (e.data.size > 0) {
