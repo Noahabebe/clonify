@@ -81,6 +81,15 @@ lip_sync_model = LipSyncModel()
 def index():
     return send_from_directory('templates', 'index.html')
 
+# Define the path to the models directory
+MODELS_DIR = os.path.join(os.getcwd(), 'models')
+
+@app.route('/models/<path:filename>')
+def serve_model(filename):
+    """Serve model files from the 'models' directory."""
+    return send_from_directory(MODELS_DIR, filename)
+    
+
 @app.route('/upload', methods=['POST'])
 def upload_video():
     try:
