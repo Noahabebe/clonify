@@ -69,11 +69,6 @@ class LipSyncModel:
             if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
                 raise ValueError("Audio extraction failed: File not created or empty.")
     
-            # Verify audio with librosa
-            y, sr = librosa.load(audio_path, sr=22050)
-            if len(y) == 0:
-                raise ValueError("Audio extraction failed: No valid audio data.")
-    
             print("[DEBUG] Audio extraction successful:", audio_path)
             return audio_path
     
