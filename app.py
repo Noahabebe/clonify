@@ -10,6 +10,7 @@ import gridfs
 from bson.objectid import ObjectId
 from nltk.corpus import cmudict
 import nltk
+import mediapipe as mp
 
 nltk.download('cmudict', force=True)
 cmu_dict = cmudict.dict()
