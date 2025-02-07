@@ -46,7 +46,7 @@ class LipSyncModel:
             return phoneme_list[0]
         return ["AH0"]  # Default phoneme fallback
 
-    def extract_audio_from_video(video_path: str) -> str:
+    def extract_audio_from_video(self, video_path: str) -> str:
         """Extracts audio from a video file using ffmpeg and converts to WAV."""
         audio_path = video_path.replace('.mp4', '.wav')
 
