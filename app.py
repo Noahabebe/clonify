@@ -58,7 +58,7 @@ class LipSyncModel:
             # Use subprocess to capture errors from ffmpeg
             command = [
                 "ffmpeg", "-i", video_path, "-vn",
-                "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", audio_path
+                "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "2", audio_path
             ]
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     
