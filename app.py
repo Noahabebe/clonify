@@ -8,9 +8,14 @@ from tts.generate_tts import generate_tts_audio
 from pymongo import MongoClient
 import gridfs
 from bson.objectid import ObjectId
-from groq import Groq  # Groq integration
+from groq import Groq, GroqError # Groq integration
 
 app = Flask(__name__)
+
+api_key =  "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"
+if not api_key:
+    raise ValueError("The GROQ_API_KEY environment variable is not set.")
+
 
 # MongoDB Setup
 client = MongoClient("mongodb://root:OT9Xh66yfE3wkLuiTv59zpt1dI96zEgXTk2VQb8EHM1yPOUKuhu5tZq7PKbHy2hV@wc4cw8ck4ocskgk0oww08w0c:27017/?directConnection=true")  
