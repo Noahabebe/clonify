@@ -11,3 +11,5 @@ groq
 requests
 pydub
 librosa
+mediapipe
+
