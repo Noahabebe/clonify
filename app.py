@@ -12,6 +12,7 @@ import nltk
 import mediapipe as mp
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
+import subprocess
 
 # Download CMU Dictionary if not available
 nltk.download('cmudict', force=True)
@@ -45,21 +46,39 @@ class LipSyncModel:
             return phoneme_list[0]
         return ["AH0"]  # Default phoneme fallback
 
-    def extract_audio_from_video(self, video_path: str) -> str:
-        """Extract audio from a video file and convert to WAV format."""
+    def extract_audio_from_video(video_path: str) -> str:
+        """Extracts audio from a video file using ffmpeg and converts to WAV."""
         audio_path = video_path.replace('.mp4', '.wav')
+
+        # Remove existing file to avoid conflicts
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+    
         try:
-            audio = AudioSegment.from_file(video_path, format="mp4")
-            audio.export(audio_path, format="wav")
-            
-            # Validate audio extraction
+            # Use subprocess to capture errors from ffmpeg
+            command = [
+                "ffmpeg", "-i", video_path, "-vn",
+                "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", audio_path
+            ]
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    
+            # Debugging: Print FFmpeg output
+            print("[DEBUG] FFmpeg Output:\n", result.stderr)
+    
+            # Check if file was created successfully
+            if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+                raise ValueError("Audio extraction failed: File not created or empty.")
+    
+            # Verify audio with librosa
             y, sr = librosa.load(audio_path, sr=22050)
             if len(y) == 0:
-                raise ValueError("Audio extraction failed: No audio data loaded")
-            
+                raise ValueError("Audio extraction failed: No valid audio data.")
+    
+            print("[DEBUG] Audio extraction successful:", audio_path)
             return audio_path
+    
         except Exception as e:
-            print(f"Error extracting audio: {e}")
+            print(f"[ERROR] Audio extraction error: {e}")
             return None
 
     def get_phonemes_from_script(self, script: str) -> list:
