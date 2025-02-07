@@ -23,7 +23,7 @@ db = client["video_storage"]
 fs = gridfs.GridFS(db)
 
 # Groq Setup
-groq_client = Groq()
+groq_client = Groq(api_key=api_key)
 
 # Local Directories for Processed Files
 PROCESSED_DIR = 'static/processed_videos'
