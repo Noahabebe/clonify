@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lip Sync & Speech Verification</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Material Icons -->
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
   <style>
     /* Modal Styles */
     #modalOverlay {
@@ -26,7 +26,7 @@
       max-width: 600px;
       width: 90%;
     }
-    /* Face Guide Overlay (make sure you have a face structure image at static/face_structure.png) */
+    /* Face Guide Overlay */
     #faceGuide {
       position: absolute;
       top: 0;
@@ -73,12 +73,18 @@
       </ul>
     </div>
     
-    <!-- Upload Form for Sample Video and Custom Script -->
+    <!-- Recording and Submission Form -->
     <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+      <!-- Video Recording Controls -->
       <div class="mb-4">
-        <label for="video" class="block text-gray-700 font-medium">Sample Video (max 30s):</label>
-        <input type="file" name="video" id="video" accept="video/*" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+        <div class="flex justify-center space-x-4">
+          <button type="button" id="startRecording" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition duration-200">Start Recording</button>
+          <button type="button" id="stopRecording" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-200 hidden">Stop Recording</button>
+        </div>
+        <p class="text-center text-sm mt-2">Record a video (max 30 seconds).</p>
       </div>
+      
+      <!-- Custom Script -->
       <div class="mb-4">
         <label for="script" class="block text-gray-700 font-medium">Custom Script (include the tongue twister):</label>
         <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="E.g., She sells seashells by the seashore; Peter Piper picked a peck of pickled peppers; How can a clam cram in a clean cream can?"></textarea>
@@ -106,7 +112,7 @@
       <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200">Download Processed Video</a>
     </div>
     
-    <!-- Face Tracking Section -->
+    <!-- Face Tracking & Recording Section -->
     <div class="mt-6 relative">
       <p class="text-center mb-2 text-sm font-semibold">Align your face within the guide below:</p>
       <video id="trackingVideo" width="320" height="240" autoplay class="rounded border"></video>
@@ -134,11 +140,13 @@
     
     declineBtn.addEventListener('click', () => {
       alert("You must accept the Privacy Policy and Terms of Use to use this website.");
-      // Redirect to a decline page or disable functionality
       window.location.href = "https://www.noahabebe.com"; // Replace with your decline page if available.
     });
     
-    // Upload Form Handling
+    // Global variable to store recorded video blob
+    let recordedBlob = null;
+    
+    // Upload Form Handling (Modified to use recorded video)
     const form = document.getElementById('uploadForm');
     const progress = document.getElementById('progress');
     const message = document.getElementById('message');
@@ -147,7 +155,14 @@
     
     form.addEventListener('submit', async function(event) {
       event.preventDefault();
-      const formData = new FormData(form);
+      if (!recordedBlob) {
+        alert("Please record a video before submitting.");
+        return;
+      }
+      const formData = new FormData();
+      formData.append('video', recordedBlob, 'recorded_video.webm');
+      formData.append('script', document.getElementById('script').value);
+      formData.append('toggle_face_movement', document.getElementById('toggle_face_movement').checked);
       
       progress.classList.remove('hidden');
       message.classList.add('hidden');
@@ -178,19 +193,63 @@
       }
     });
     
-    // Face Tracking Logic
+    // Face Tracking and Video Recording Logic
     async function initFaceTracking() {
       await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
       await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
       
       const trackingVideo = document.getElementById('trackingVideo');
+      let stream;
       navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
+        .then(s => {
+          stream = s;
           trackingVideo.srcObject = stream;
           trackingVideo.play();
+          
+          // Setup MediaRecorder for video recording
+          const startBtn = document.getElementById('startRecording');
+          const stopBtn = document.getElementById('stopRecording');
+          let mediaRecorder;
+          let recordedChunks = [];
+          let recordingTimeout;
+          
+          startBtn.addEventListener('click', () => {
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+            mediaRecorder.ondataavailable = function(e) {
+              if (e.data.size > 0) {
+                recordedChunks.push(e.data);
+              }
+            };
+            mediaRecorder.onstop = function() {
+              recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
+              console.log("Recording stopped, blob available", recordedBlob);
+            };
+            mediaRecorder.start();
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            // Automatically stop recording after 30 seconds
+            recordingTimeout = setTimeout(() => {
+              if (mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+              }
+            }, 30000);
+          });
+          
+          stopBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+              mediaRecorder.stop();
+              startBtn.classList.remove('hidden');
+              stopBtn.classList.add('hidden');
+              clearTimeout(recordingTimeout);
+            }
+          });
         })
         .catch(err => console.error("Error accessing webcam:", err));
       
+      // Run face detection periodically and send movement data (if any)
       trackingVideo.addEventListener('play', () => {
         setInterval(async () => {
           const detections = await faceapi.detectAllFaces(trackingVideo, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
