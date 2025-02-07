@@ -8,3 +8,4 @@ tts
 gunicorn
 gtts
 groq
+requests
