@@ -13,4 +13,5 @@ pydub
 librosa
 mediapipe
 fastdtw
-
+rembg
+opencv-python
