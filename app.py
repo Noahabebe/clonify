@@ -157,16 +157,10 @@ def serve_model(filename):
 def add_security_headers(response):
     # Required for SharedArrayBuffer
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
-    response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
     
-    # Add CORS headers for static files
-    if request.path.startswith('/static/'):
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
-        
-        # Ensure CSS files are served with correct MIME type
-        if response.content_type.startswith('text/css'):
-            response.headers['Content-Type'] = 'text/css'
+    # Only apply COEP to specific routes (not static files or external resources)
+    if not request.path.startswith('/static/'):
+        response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
     
     return response
 
