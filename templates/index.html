@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lip Sync & Speech Verification</title>
+  <title>Advanced Lip Sync & Video Processing</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
   <style>
@@ -61,7 +60,7 @@
   
   <!-- Main Content (hidden until user accepts) -->
   <div id="mainContent" class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full hidden">
-    <h1 class="text-2xl font-bold text-center mb-6">Lip Sync & Speech Verification</h1>
+    <h1 class="text-2xl font-bold text-center mb-6">Advanced Lip Sync & Video Processing</h1>
     
     <!-- Instructions -->
     <div class="mb-4 p-4 border rounded bg-gray-50">
@@ -87,7 +86,7 @@
         <p class="text-center text-sm mt-2">Record a video (max 30 seconds).</p>
       </div>
       
-      <!-- Custom Script -->
+      <!-- Custom Script and Toggles -->
       <div class="mb-4">
         <label for="script" class="block text-gray-700 font-medium">Custom Script (include the tongue twister):</label>
         <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="E.g., She sells seashells by the seashore; Peter Piper picked a peck of pickled peppers; How can a clam cram in a clean cream can?"></textarea>
@@ -95,9 +94,28 @@
       <div class="mb-4">
         <label for="toggle_face_movement" class="inline-flex items-center">
           <input type="checkbox" name="toggle_face_movement" id="toggle_face_movement" class="form-checkbox">
-          <span class="ml-2">Enable face movement effect</span>
+          <span class="ml-2">Enable Face Movement</span>
         </label>
       </div>
+      <div class="mb-4">
+        <label for="toggle_blur" class="inline-flex items-center">
+          <input type="checkbox" name="toggle_blur" id="toggle_blur" class="form-checkbox">
+          <span class="ml-2">Enable Face Blur</span>
+        </label>
+      </div>
+      <div class="mb-4">
+        <label for="toggle_background_removal" class="inline-flex items-center">
+          <input type="checkbox" name="toggle_background_removal" id="toggle_background_removal" class="form-checkbox">
+          <span class="ml-2">Enable Background Removal</span>
+        </label>
+      </div>
+      <div class="mb-4">
+        <label for="toggle_ai_lip_sync" class="inline-flex items-center">
+          <input type="checkbox" name="toggle_ai_lip_sync" id="toggle_ai_lip_sync" class="form-checkbox" checked>
+          <span class="ml-2">Enable AI Lip Sync</span>
+        </label>
+      </div>
+      
       <!-- Button to trigger upload (appears after recording is complete) -->
       <button type="button" id="uploadBtn" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200 hidden">Process Video</button>
     </div>
@@ -124,7 +142,6 @@
     </div>
   </div>
 
-  <!-- Removed ffmpeg.js since we are not using WASM -->
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const modalOverlay = document.getElementById("modalOverlay");
@@ -144,41 +161,34 @@
       let recordedChunks = [];
       let recordedBlob = null;
 
-      // Handle modal acceptance/decline
+      // Modal handling
       acceptBtn.addEventListener("click", () => {
         modalOverlay.style.display = "none";
         mainContent.classList.remove("hidden");
       });
-
       declineBtn.addEventListener("click", () => {
         alert("You must accept the terms to continue.");
       });
 
-      // Access the camera and microphone
+      // Access camera/microphone
       navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
         trackingVideo.srcObject = stream;
-
         startRecording.addEventListener("click", () => {
           recordedChunks = [];
           mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-
           mediaRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
               recordedChunks.push(event.data);
             }
           };
-
           mediaRecorder.onstop = () => {
             recordedBlob = new Blob(recordedChunks, { type: "video/webm" });
-            // Show the upload button once recording is finished
             uploadBtn.classList.remove("hidden");
           };
-
           mediaRecorder.start();
           startRecording.classList.add("hidden");
           stopRecording.classList.remove("hidden");
         });
-
         stopRecording.addEventListener("click", () => {
           if (mediaRecorder && mediaRecorder.state !== "inactive") {
             mediaRecorder.stop();
@@ -190,50 +200,45 @@
         console.error("Error accessing media devices.", err);
       });
 
-      // Function to upload the recorded video to the server
+      // Upload function
       function uploadVideo(blob) {
         const formData = new FormData();
-        // Append the video blob (using its native WebM format)
         formData.append('video', blob, "recorded_video.webm");
-        // Append the custom script text
         const scriptText = document.getElementById("script").value;
         formData.append('script', scriptText);
-
-        // Optionally add face movement toggle (if used server‑side)
-        const toggleFace = document.getElementById("toggle_face_movement").checked;
-        formData.append('toggle_face_movement', toggleFace);
+        // Append toggle values (if checkbox is checked, value will be "on")
+        formData.append('toggle_face_movement', document.getElementById("toggle_face_movement").checked ? "on" : "");
+        formData.append('toggle_blur', document.getElementById("toggle_blur").checked ? "on" : "");
+        formData.append('toggle_background_removal', document.getElementById("toggle_background_removal").checked ? "on" : "");
+        formData.append('toggle_ai_lip_sync', document.getElementById("toggle_ai_lip_sync").checked ? "on" : "");
 
         progress.classList.remove("hidden");
 
-        fetch('/upload', {
-          method: 'POST',
-          body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-          progress.classList.add("hidden");
-          message.classList.remove("hidden");
-          message.textContent = data.message;
-          if (data.video_id) {
-            message.classList.remove("bg-red-500");
-            message.classList.add("bg-green-500");
-            downloadContainer.classList.remove("hidden");
-            downloadLink.href = '/download/' + data.video_id;
-          } else {
+        fetch('/upload', { method: 'POST', body: formData })
+          .then(response => response.json())
+          .then(data => {
+            progress.classList.add("hidden");
+            message.classList.remove("hidden");
+            message.textContent = data.message;
+            if (data.video_id) {
+              message.classList.remove("bg-red-500");
+              message.classList.add("bg-green-500");
+              downloadContainer.classList.remove("hidden");
+              downloadLink.href = '/download/' + data.video_id;
+            } else {
+              message.classList.remove("bg-green-500");
+              message.classList.add("bg-red-500");
+            }
+          })
+          .catch(error => {
+            progress.classList.add("hidden");
+            message.classList.remove("hidden");
+            message.textContent = "Error processing video: " + error;
             message.classList.remove("bg-green-500");
             message.classList.add("bg-red-500");
-          }
-        })
-        .catch(error => {
-          progress.classList.add("hidden");
-          message.classList.remove("hidden");
-          message.textContent = "Error processing video: " + error;
-          message.classList.remove("bg-green-500");
-          message.classList.add("bg-red-500");
-        });
+          });
       }
 
-      // Upload button handler
       uploadBtn.addEventListener("click", () => {
         if (recordedBlob) {
           uploadVideo(recordedBlob);
