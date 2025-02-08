@@ -76,8 +76,8 @@
       </ul>
     </div>
     
-    <!-- Recording and Submission Form -->
-    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+    <!-- Recording and Submission Controls -->
+    <div class="mb-4">
       <!-- Video Recording Controls -->
       <div class="mb-4">
         <div class="flex justify-center space-x-4">
@@ -98,8 +98,9 @@
           <span class="ml-2">Enable face movement effect</span>
         </label>
       </div>
-      <button type="submit" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200">Process Video</button>
-    </form>
+      <!-- Button to trigger upload (appears after recording is complete) -->
+      <button type="button" id="uploadBtn" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200 hidden">Process Video</button>
+    </div>
     
     <!-- Progress Indicator -->
     <div id="progress" class="hidden mt-4 text-center text-gray-600">
@@ -112,20 +113,18 @@
     
     <!-- Download Button -->
     <div id="downloadContainer" class="hidden mt-4 text-center">
-      <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200">Download Processed Video</a>
+      <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200" download>Download Processed Video</a>
     </div>
     
     <!-- Face Tracking & Recording Section -->
     <div class="mt-6 relative">
       <p class="text-center mb-2 text-sm font-semibold">Align your face within the guide below:</p>
-            <video id="trackingVideo" width="320" height="240" autoplay class="border rounded"></video>
+      <video id="trackingVideo" width="320" height="240" autoplay class="border rounded"></video>
       <canvas id="faceGuide"></canvas>
     </div>
   </div>
 
-  <!-- FFmpeg.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
-
+  <!-- Removed ffmpeg.js since we are not using WASM -->
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const modalOverlay = document.getElementById("modalOverlay");
@@ -134,6 +133,7 @@
       const mainContent = document.getElementById("mainContent");
       const startRecording = document.getElementById("startRecording");
       const stopRecording = document.getElementById("stopRecording");
+      const uploadBtn = document.getElementById("uploadBtn");
       const trackingVideo = document.getElementById("trackingVideo");
       const progress = document.getElementById("progress");
       const message = document.getElementById("message");
@@ -142,8 +142,9 @@
 
       let mediaRecorder;
       let recordedChunks = [];
+      let recordedBlob = null;
 
-      // Handle modal
+      // Handle modal acceptance/decline
       acceptBtn.addEventListener("click", () => {
         modalOverlay.style.display = "none";
         mainContent.classList.remove("hidden");
@@ -153,7 +154,7 @@
         alert("You must accept the terms to continue.");
       });
 
-      // Video Recording
+      // Access the camera and microphone
       navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
         trackingVideo.srcObject = stream;
 
@@ -162,14 +163,15 @@
           mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
 
           mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
+            if (event.data && event.data.size > 0) {
               recordedChunks.push(event.data);
             }
           };
 
           mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: "video/webm" });
-            processVideo(blob);
+            recordedBlob = new Blob(recordedChunks, { type: "video/webm" });
+            // Show the upload button once recording is finished
+            uploadBtn.classList.remove("hidden");
           };
 
           mediaRecorder.start();
@@ -178,36 +180,67 @@
         });
 
         stopRecording.addEventListener("click", () => {
-          mediaRecorder.stop();
+          if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+          }
           startRecording.classList.remove("hidden");
           stopRecording.classList.add("hidden");
         });
+      }).catch((err) => {
+        console.error("Error accessing media devices.", err);
       });
 
-      // Convert video with FFmpeg.js
-      async function processVideo(blob) {
+      // Function to upload the recorded video to the server
+      function uploadVideo(blob) {
+        const formData = new FormData();
+        // Append the video blob (using its native WebM format)
+        formData.append('video', blob, "recorded_video.webm");
+        // Append the custom script text
+        const scriptText = document.getElementById("script").value;
+        formData.append('script', scriptText);
+
+        // Optionally add face movement toggle (if used server‑side)
+        const toggleFace = document.getElementById("toggle_face_movement").checked;
+        formData.append('toggle_face_movement', toggleFace);
+
         progress.classList.remove("hidden");
 
-        const { createFFmpeg, fetchFile } = FFmpeg; // ✅ Fixed Reference
-        const ffmpeg = createFFmpeg({ log: true });
-
-        if (!ffmpeg.isLoaded()) {
-          await ffmpeg.load(); // ✅ Ensured FFmpeg loads
-        }
-
-        const webmData = await fetchFile(blob);  // ✅ Fixed fetchFile Handling
-        ffmpeg.FS("writeFile", "input.webm", webmData);
-        await ffmpeg.run("-i", "input.webm", "-preset", "ultrafast", "output.mp4");
-
-        const mp4Data = ffmpeg.FS("readFile", "output.mp4");
-        const videoBlob = new Blob([mp4Data.buffer], { type: "video/mp4" });
-        const videoUrl = URL.createObjectURL(videoBlob);
-
-        progress.classList.add("hidden");
-        downloadContainer.classList.remove("hidden");
-        downloadLink.href = videoUrl;
-        downloadLink.download = "processed_video.mp4";
+        fetch('/upload', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          progress.classList.add("hidden");
+          message.classList.remove("hidden");
+          message.textContent = data.message;
+          if (data.video_id) {
+            message.classList.remove("bg-red-500");
+            message.classList.add("bg-green-500");
+            downloadContainer.classList.remove("hidden");
+            downloadLink.href = '/download/' + data.video_id;
+          } else {
+            message.classList.remove("bg-green-500");
+            message.classList.add("bg-red-500");
+          }
+        })
+        .catch(error => {
+          progress.classList.add("hidden");
+          message.classList.remove("hidden");
+          message.textContent = "Error processing video: " + error;
+          message.classList.remove("bg-green-500");
+          message.classList.add("bg-red-500");
+        });
       }
+
+      // Upload button handler
+      uploadBtn.addEventListener("click", () => {
+        if (recordedBlob) {
+          uploadVideo(recordedBlob);
+        } else {
+          alert("No recording available to upload.");
+        }
+      });
     });
   </script>
 </body>
