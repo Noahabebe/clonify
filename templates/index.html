@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lip Sync & Speech Verification</title>
   <!-- Tailwind CSS -->
- <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
@@ -118,170 +118,97 @@
     <!-- Face Tracking & Recording Section -->
     <div class="mt-6 relative">
       <p class="text-center mb-2 text-sm font-semibold">Align your face within the guide below:</p>
-      <video id="trackingVideo" width="320" height="240" autoplay class="rounded border"></video>
-      <!-- Face structure overlay -->
-      <div id="faceGuide"></div>
+            <video id="trackingVideo" width="320" height="240" autoplay class="border rounded"></video>
+      <canvas id="faceGuide"></canvas>
     </div>
   </div>
-  
-  <!-- Scripts -->
-  <!-- Load face-api.js -->
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
-  <!-- Load FFmpeg.wasm -->
-  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.5/dist/ffmpeg.min.js"></script>
-  
+
+  <!-- FFmpeg.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.js/0.11.0/ffmpeg.min.js"></script>
+
   <script>
-    // Privacy Modal Logic
-    const modalOverlay = document.getElementById('modalOverlay');
-    const acceptBtn = document.getElementById('acceptBtn');
-    const declineBtn = document.getElementById('declineBtn');
-    const mainContent = document.getElementById('mainContent');
-    
-    acceptBtn.addEventListener('click', () => {
-      modalOverlay.style.display = 'none';
-      mainContent.classList.remove('hidden');
-    });
-    
-    declineBtn.addEventListener('click', () => {
-      alert("You must accept the Privacy Policy and Terms of Use to use this website.");
-      window.location.href = "https://www.noahabebe.com"; // Replace with your decline page if available.
-    });
-    
-    // Global variable to store recorded video blob
-    let recordedBlob = null;
-    
-    // Upload Form Handling (Modified to convert the recording to MP4)
-    const form = document.getElementById('uploadForm');
-    const progress = document.getElementById('progress');
-    const message = document.getElementById('message');
-    const downloadContainer = document.getElementById('downloadContainer');
-    const downloadLink = document.getElementById('downloadLink');
-    
-    form.addEventListener('submit', async function(event) {
-      event.preventDefault();
-      if (!recordedBlob) {
-        alert("Please record a video before submitting.");
-        return;
-      }
-      
-      progress.classList.remove('hidden');
-      message.classList.add('hidden');
-      downloadContainer.classList.add('hidden');
+    document.addEventListener("DOMContentLoaded", function () {
+      const modalOverlay = document.getElementById("modalOverlay");
+      const acceptBtn = document.getElementById("acceptBtn");
+      const declineBtn = document.getElementById("declineBtn");
+      const mainContent = document.getElementById("mainContent");
+      const startRecording = document.getElementById("startRecording");
+      const stopRecording = document.getElementById("stopRecording");
+      const trackingVideo = document.getElementById("trackingVideo");
+      const progress = document.getElementById("progress");
+      const message = document.getElementById("message");
+      const downloadContainer = document.getElementById("downloadContainer");
+      const downloadLink = document.getElementById("downloadLink");
 
-      try {
-        // Initialize FFmpeg
-        const { createFFmpeg, fetchFile } = FFmpeg;
-        const ffmpeg = createFFmpeg({ log: true });
-        if (!ffmpeg.isLoaded()) {
-          await ffmpeg.load();
-        }
+      let mediaRecorder;
+      let recordedChunks = [];
 
-        // Write the recorded WebM blob to the FFmpeg file system
-        ffmpeg.FS('writeFile', 'input.webm', await fetchFile(recordedBlob));
+      // Handle modal
+      acceptBtn.addEventListener("click", () => {
+        modalOverlay.style.display = "none";
+        mainContent.classList.remove("hidden");
+      });
 
-        // Run FFmpeg command to convert WebM to MP4
-        // The command below uses libx264 and AAC for encoding.
-        await ffmpeg.run('-i', 'input.webm', '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', 'output.mp4');
+      declineBtn.addEventListener("click", () => {
+        alert("You must accept the terms to continue.");
+      });
 
-        // Read the converted MP4 file from the FFmpeg file system
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+      // Video Recording
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+        trackingVideo.srcObject = stream;
 
-        // Build the form data with the converted MP4 video
-        const formData = new FormData();
-        formData.append('video', mp4Blob, 'recorded_video.mp4');
-        formData.append('script', document.getElementById('script').value);
-        formData.append('toggle_face_movement', document.getElementById('toggle_face_movement').checked);
-        
-        // Upload the form data
-        const response = await fetch('/upload', { method: 'POST', body: formData });
-        const result = await response.json();
-        progress.classList.add('hidden');
-        
-        if (response.ok) {
-          message.textContent = "Video processed successfully!";
-          message.classList.remove('hidden', 'bg-red-500');
-          message.classList.add('bg-green-500');
-          
-          downloadLink.href = `/download/${result.video_id}`;
-          downloadContainer.classList.remove('hidden');
-        } else {
-          message.textContent = result.message;
-          message.classList.remove('hidden', 'bg-green-500');
-          message.classList.add('bg-red-500');
-        }
-      } catch (error) {
-        progress.classList.add('hidden');
-        console.error("Error during video conversion/upload:", error);
-        message.textContent = "An error occurred. Please try again.";
-        message.classList.remove('hidden', 'bg-green-500');
-        message.classList.add('bg-red-500');
+        startRecording.addEventListener("click", () => {
+          recordedChunks = [];
+          mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              recordedChunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: "video/webm" });
+            processVideo(blob);
+          };
+
+          mediaRecorder.start();
+          startRecording.classList.add("hidden");
+          stopRecording.classList.remove("hidden");
+        });
+
+        stopRecording.addEventListener("click", () => {
+          mediaRecorder.stop();
+          startRecording.classList.remove("hidden");
+          stopRecording.classList.add("hidden");
+        });
+      });
+
+      // Convert video with FFmpeg.js
+      async function processVideo(blob) {
+        progress.classList.remove("hidden");
+
+        const ffmpeg = await createFFmpeg({ log: true });
+        await ffmpeg.load();
+
+        const reader = new FileReader();
+        reader.readAsArrayBuffer(blob);
+        reader.onload = async () => {
+          const buffer = new Uint8Array(reader.result);
+          ffmpeg.FS("writeFile", "input.webm", buffer);
+          await ffmpeg.run("-i", "input.webm", "-preset", "ultrafast", "output.mp4");
+
+          const output = ffmpeg.FS("readFile", "output.mp4");
+          const videoBlob = new Blob([output.buffer], { type: "video/mp4" });
+          const videoUrl = URL.createObjectURL(videoBlob);
+
+          progress.classList.add("hidden");
+          downloadContainer.classList.remove("hidden");
+          downloadLink.href = videoUrl;
+          downloadLink.download = "processed_video.mp4";
+        };
       }
     });
-    
-    // Wait for face-api.js to load before calling the initialization function
-    window.onload = async function() {
-      try {
-        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-        initFaceTracking();  // Call the function after libraries are loaded
-      } catch (error) {
-        console.error("Error loading face-api models:", error);
-      }
-    };
-    
-    // Face Tracking and Video Recording Logic
-    function initFaceTracking() {
-      const trackingVideo = document.getElementById('trackingVideo');
-      const faceGuide = document.getElementById('faceGuide'); // Face guide element
-      let stream;
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(s => {
-          stream = s;
-          trackingVideo.srcObject = stream;
-          trackingVideo.play();
-          
-          // Setup MediaRecorder for video recording
-          const startBtn = document.getElementById('startRecording');
-          const stopBtn = document.getElementById('stopRecording');
-          let mediaRecorder;
-          let recordedChunks = [];
-          let recordingTimeout;
-          
-          startBtn.addEventListener('click', () => {
-            recordedChunks = [];
-            // Specify WebM format; we will convert it to MP4 later.
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-            mediaRecorder.ondataavailable = function(e) {
-              if (e.data.size > 0) {
-                recordedChunks.push(e.data);
-              }
-            };
-            mediaRecorder.onstop = function() {
-              recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
-              console.log("Recording stopped. Blob size: ", recordedBlob.size);
-            };
-            mediaRecorder.start();
-            startBtn.classList.add('hidden');
-            stopBtn.classList.remove('hidden');
-            
-            // Show face guide when recording starts
-            faceGuide.style.opacity = 1;
-            
-            recordingTimeout = setTimeout(() => { mediaRecorder.stop(); }, 30000);  // Stop recording after 30 seconds
-          });
-          
-          stopBtn.addEventListener('click', () => {
-            clearTimeout(recordingTimeout);
-            mediaRecorder.stop();
-            startBtn.classList.remove('hidden');
-            stopBtn.classList.add('hidden');
-            
-            // Hide face guide when recording stops
-            faceGuide.style.opacity = 0;
-          });
-        })
-        .catch(error => console.error("Error accessing webcam:", error));
-    }
   </script>
 </body>
 </html>
