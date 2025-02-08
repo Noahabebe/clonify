@@ -124,7 +124,7 @@
   </div>
 
   <!-- FFmpeg.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.js/0.11.0/ffmpeg.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -188,22 +188,25 @@
       async function processVideo(blob) {
         progress.classList.remove("hidden");
 
-        const ffmpeg = await createFFmpeg({ log: true });
-        await ffmpeg.load();
-        const reader = new FileReader();
-        reader.readAsArrayBuffer(blob);
-        reader.onload = async () => {
-          const buffer = new Uint8Array(reader.result);
-          ffmpeg.FS("writeFile", "input.webm", buffer);
-          await ffmpeg.run("-i", "input.webm", "-preset", "ultrafast", "output.mp4");
-          const output = ffmpeg.FS("readFile", "output.mp4");
-          const videoBlob = new Blob([output.buffer], { type: "video/mp4" });
-          const videoUrl = URL.createObjectURL(videoBlob);
-          progress.classList.add("hidden");
-          downloadContainer.classList.remove("hidden");
-          downloadLink.href = videoUrl;
-          downloadLink.download = "processed_video.mp4";
-        };
+        const { createFFmpeg, fetchFile } = FFmpeg; // ✅ Fixed Reference
+        const ffmpeg = createFFmpeg({ log: true });
+
+        if (!ffmpeg.isLoaded()) {
+          await ffmpeg.load(); // ✅ Ensured FFmpeg loads
+        }
+
+        const webmData = await fetchFile(blob);  // ✅ Fixed fetchFile Handling
+        ffmpeg.FS("writeFile", "input.webm", webmData);
+        await ffmpeg.run("-i", "input.webm", "-preset", "ultrafast", "output.mp4");
+
+        const mp4Data = ffmpeg.FS("readFile", "output.mp4");
+        const videoBlob = new Blob([mp4Data.buffer], { type: "video/mp4" });
+        const videoUrl = URL.createObjectURL(videoBlob);
+
+        progress.classList.add("hidden");
+        downloadContainer.classList.remove("hidden");
+        downloadLink.href = videoUrl;
+        downloadLink.download = "processed_video.mp4";
       }
     });
   </script>
