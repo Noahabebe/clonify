@@ -16,3 +16,5 @@ fastdtw
 rembg
 opencv-python
 onnxruntime
+torchvision
+opencv-contrib-python
