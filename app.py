@@ -132,22 +132,25 @@ def apply_ai_lip_sync(video_path: str, audio_path: str) -> str:
     Use an AI model (e.g., Wav2Lip) to generate a lip-synced video.
     This function assumes you have a Wav2Lip inference script available.
     """
-    output_path = os.path.splitext(video_path)[0] + '_ai_lipsynced.mp4'
+    inference_script = os.path.abspath('Wav2Lip/inference.py')
+    checkpoint_path = os.path.abspath('Wav2Lip/checkpoint/wav2lip.pth')
+    output_video = os.path.splitext(video_path)[0] + '_ai_lipsynced.mp4'
+
     try:
         command = [
-            "python", "Wav2Lip/inference.py",
-            "--checkpoint_path", "Wav2Lip/checkpoint/wav2lip.pth",
-            "--face", video_path,
-            "--audio", audio_path,
-            "--outfile", output_path
+            'python', inference_script,
+            '--checkpoint_path', checkpoint_path,
+            '--face', os.path.abspath(video_path),
+            '--audio', os.path.abspath(audio_path),
+            '--outfile', output_video
         ]
         subprocess.run(command, check=True)
-        print(f"[DEBUG] AI Lip Sync complete: {output_path}")
+        print(f"AI Lip Sync complete: {output_video}")
     except Exception as e:
-        print(f"[ERROR] AI Lip Sync failed: {e}")
-        # Fallback to original video if failure occurs.
+        print(f"AI Lip Sync failed: {e}")
         return video_path
-    return output_path
+
+    return output_video
 
 def apply_face_movement(video_path: str) -> str:
     """
