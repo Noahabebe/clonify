@@ -152,6 +152,12 @@ def index():
 def serve_model(filename):
     """Serve model files from the 'models' directory."""
     return send_from_directory(MODELS_DIR, filename)
+    
+@app.after_request
+def add_security_headers(response):
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+    return response
 
 
 @app.route('/upload', methods=['POST'])
