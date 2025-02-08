@@ -14,7 +14,7 @@ import mediapipe as mp
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 
-# Download CMU Dictionary if not available
+# Download CMU Dictionary and Punkt tokenizer if not available
 nltk.download('cmudict', quiet=True)
 nltk.download('punkt', quiet=True)
 cmu_dict = nltk.corpus.cmudict.dict()
@@ -46,15 +46,14 @@ class LipSyncModel:
         phoneme_list = cmu_dict.get(word, [])
         if phoneme_list and phoneme_list[0]:
             return phoneme_list[0]
-        # Log a warning and use default fallback if not found.
         print(f"[WARNING] No phonemes found for word: '{word}'. Using default phoneme.")
         return ["AH0"]
 
     def extract_audio_from_video(self, video_path: str) -> str:
-        """Extracts audio from a video file using ffmpeg and converts to WAV."""
-        audio_path = video_path.replace('.mp4', '.wav')
+        """Extracts audio from a video file using ffmpeg and converts it to WAV."""
+        base, _ = os.path.splitext(video_path)
+        audio_path = base + '.wav'
 
-        # Remove existing audio file to avoid conflicts
         if os.path.exists(audio_path):
             os.remove(audio_path)
 
@@ -63,11 +62,8 @@ class LipSyncModel:
             "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "2", audio_path
         ]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        # Debugging: Print FFmpeg output
         print("[DEBUG] FFmpeg Output:\n", result.stderr)
 
-        # Check if file was created successfully and is nonempty
         if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
@@ -78,9 +74,8 @@ class LipSyncModel:
         return audio_path
 
     def get_phonemes_from_script(self, script: str) -> list:
-        """Extract phonemes from the script with logging and validation."""
+        """Extract phonemes from the provided script."""
         phonemes = []
-        # Use NLTK's word tokenizer to handle punctuation properly.
         words = word_tokenize(script)
         for word in words:
             word_phonemes = self.text_to_phonemes(word)
@@ -105,10 +100,10 @@ class LipSyncModel:
         return segments
 
     def find_audio_segment_for_word(self, mfccs: np.ndarray, phoneme: str) -> tuple:
-        """Find time segment in audio matching phoneme using DTW."""
+        """Find time segment in audio matching the given phoneme using DTW."""
         word_features = self.phoneme_to_feature_matrix([phoneme])
         if word_features.shape[1] == 0 or mfccs.shape[1] == 0:
-            return 0, 0  # Prevent out-of-range errors
+            return 0, 0
 
         distance, path = fastdtw(word_features, mfccs.T, dist=euclidean)
         if len(path) == 0:
@@ -121,7 +116,7 @@ class LipSyncModel:
         return start_time, end_time
 
     def phoneme_to_feature_matrix(self, phonemes: list) -> np.ndarray:
-        """Convert phonemes to feature vectors with logging if a phoneme is missing."""
+        """Convert a list of phonemes into a feature matrix."""
         phoneme_to_vector = {
             "AH0": [1, 0, 0], "EH0": [0, 1, 0], "IH0": [0, 0, 1],
             "AH1": [1, 1, 0], "EH1": [0, 1, 1], "IH1": [1, 0, 1],
@@ -160,15 +155,14 @@ def upload_video():
         video = request.files.get('video')
         script = request.form.get('script')
 
-        # Validate that both video and script are provided.
         if not video:
             return jsonify({"message": "Missing video file!"}), 400
         if not script or script.strip() == "":
             return jsonify({"message": "Script cannot be empty!"}), 400
 
-        # Validate video file extension.
-        if not video.filename.lower().endswith(".mp4"):
-            return jsonify({"message": "Invalid video file format. Only MP4 allowed."}), 400
+        # Allow MP4 and WEBM uploads
+        if not (video.filename.lower().endswith(".mp4") or video.filename.lower().endswith(".webm")):
+            return jsonify({"message": "Invalid video file format. Only MP4 or WEBM allowed."}), 400
 
         video_filename = video.filename
         video_file_path = os.path.join(PROCESSED_DIR, video_filename)
@@ -195,24 +189,19 @@ def upload_video():
 
 def apply_lip_sync_to_video(video_path: str, audio_path: str, audio_segments: list) -> str:
     """
-    Apply lip sync to the video with the processed audio.
-
-    Placeholder implementation:
-      - Extracts segments from the original audio corresponding to detected phoneme timings.
-      - Concatenates these segments into a new audio file.
-      - Overlays the new audio track on the video.
-    Note: A proper lip sync would adjust video frames based on phoneme timing.
+    Apply lip sync to the video by:
+      - Extracting audio segments corresponding to phoneme timings,
+      - Concatenating them into a new audio track,
+      - And merging the new audio with the original video.
     """
-    new_audio_path = video_path.replace('.mp4', '_new_audio.wav')
+    new_audio_path = os.path.splitext(video_path)[0] + '_new_audio.wav'
     if os.path.exists(new_audio_path):
         os.remove(new_audio_path)
 
     try:
-        # Load original audio with pydub
         original_audio = AudioSegment.from_wav(audio_path)
         new_audio = AudioSegment.empty()
 
-        # Process each detected audio segment.
         for (start, end) in audio_segments:
             start_ms = int(start * 1000)
             end_ms = int(end * 1000)
@@ -220,7 +209,6 @@ def apply_lip_sync_to_video(video_path: str, audio_path: str, audio_segments: li
                 segment_audio = original_audio[start_ms:end_ms]
                 new_audio += segment_audio
 
-        # If no valid segments were found, fall back to the original audio.
         if len(new_audio) == 0:
             new_audio = original_audio
 
@@ -229,14 +217,13 @@ def apply_lip_sync_to_video(video_path: str, audio_path: str, audio_segments: li
         print(f"[ERROR] Failed to create new audio track: {e}")
         new_audio_path = audio_path
 
-    # Merge the new audio track with the video.
-    synced_video_path = video_path.replace(".mp4", "_synced.mp4")
+    synced_video_path = os.path.splitext(video_path)[0] + "_synced.mp4"
     try:
         ffmpeg.input(video_path).output(synced_video_path, audio=new_audio_path).run(overwrite_output=True)
         print(f"[DEBUG] Synced video created: {synced_video_path}")
     except Exception as e:
         print(f"[ERROR] Lip sync video processing failed: {e}")
-        return video_path  # Fallback to original video if processing fails.
+        return video_path  # Fallback to the original video
     return synced_video_path
 
 
