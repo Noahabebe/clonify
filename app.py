@@ -20,6 +20,7 @@ import tempfile
 # Download required NLTK resources if needed
 nltk.download('cmudict', quiet=True)
 nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
 cmu_dict = nltk.corpus.cmudict.dict()
 
 app = Flask(__name__)
