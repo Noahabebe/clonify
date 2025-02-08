@@ -359,4 +359,4 @@ def download_video(video_id):
         return jsonify({"message": f"Error downloading video: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
