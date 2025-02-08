@@ -118,10 +118,14 @@ class LipSyncModel:
         return start_time, end_time
 
     def phoneme_to_feature_matrix(self, phonemes: list) -> np.ndarray:
-        """Convert a list of phonemes into a feature matrix."""
+        """Convert a list of phonemes into a feature matrix padded to 13 dimensions."""
         phoneme_to_vector = {
-            "AH0": [1, 0, 0], "EH0": [0, 1, 0], "IH0": [0, 0, 1],
-            "AH1": [1, 1, 0], "EH1": [0, 1, 1], "IH1": [1, 0, 1],
+            "AH0": [1, 0, 0],
+            "EH0": [0, 1, 0],
+            "IH0": [0, 0, 1],
+            "AH1": [1, 1, 0],
+            "EH1": [0, 1, 1],
+            "IH1": [1, 0, 1],
             "AY1": [1, 1, 1]
         }
         features = []
@@ -130,8 +134,11 @@ class LipSyncModel:
             if vector is None:
                 print(f"[WARNING] No feature vector found for phoneme: {phoneme}. Using default [0, 0, 0].")
                 vector = [0, 0, 0]
-            features.append(vector)
+            # Pad the vector with zeros so that its length is 13.
+            padded_vector = vector + [0] * (13 - len(vector))
+            features.append(padded_vector)
         return np.array(features)
+
 
 
 lip_sync_model = LipSyncModel()
