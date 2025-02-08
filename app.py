@@ -152,17 +152,6 @@ def index():
 def serve_model(filename):
     """Serve model files from the 'models' directory."""
     return send_from_directory(MODELS_DIR, filename)
-    
-@app.after_request
-def add_security_headers(response):
-    # Required for SharedArrayBuffer
-    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
-    
-    # Only apply COEP to specific routes (not static files or external resources)
-    if not request.path.startswith('/static/'):
-        response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
-    
-    return response
 
 
 @app.route('/upload', methods=['POST'])
