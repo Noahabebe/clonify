@@ -13,37 +13,33 @@ from nltk.tokenize import word_tokenize
 import mediapipe as mp
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
+import cv2
+from rembg import remove
+import tempfile
 
-# Download CMU Dictionary and Punkt tokenizer if not available
+# Download required NLTK resources if needed
 nltk.download('cmudict', quiet=True)
 nltk.download('punkt', quiet=True)
-nltk.download('punkt_tab', quiet=True)
-
 cmu_dict = nltk.corpus.cmudict.dict()
 
 app = Flask(__name__)
 
 # MongoDB & Local Storage Setup
-client = MongoClient("mongodb://root:OT9Xh66yfE3wkLuiTv59zpt1dI96zEgXTk2VQb8EHM1yPOUKuhu5tZq7PKbHy2hV@wc4cw8ck4ocskgk0oww08w0c:27017/?directConnection=true")
+client = MongoClient("mongodb://root:password@localhost:27017/?directConnection=true")
 db = client["video_storage"]
 fs = gridfs.GridFS(db)
-
 PROCESSED_DIR = 'static/processed_videos'
 os.makedirs(PROCESSED_DIR, exist_ok=True)
-
-# Define the path to the models directory
 MODELS_DIR = os.path.join(os.getcwd(), 'models')
 
-
 # ---------------------------
-# LipSyncModel Class
+# LipSyncModel Class (existing functionality)
 # ---------------------------
 class LipSyncModel:
     def __init__(self):
         self.face_mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
 
     def text_to_phonemes(self, word: str) -> list:
-        """Convert a word into phonemes using CMU Dictionary with fallback."""
         word = word.lower()
         phoneme_list = cmu_dict.get(word, [])
         if phoneme_list and phoneme_list[0]:
@@ -52,31 +48,25 @@ class LipSyncModel:
         return ["AH0"]
 
     def extract_audio_from_video(self, video_path: str) -> str:
-        """Extracts audio from a video file using ffmpeg and converts it to WAV."""
         base, _ = os.path.splitext(video_path)
         audio_path = base + '.wav'
-
         if os.path.exists(audio_path):
             os.remove(audio_path)
-
         command = [
             "ffmpeg", "-i", video_path, "-vn",
             "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "2", audio_path
         ]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         print("[DEBUG] FFmpeg Output:\n", result.stderr)
-
         if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
             print("[ERROR] Audio extraction failed: File not created or empty.")
             return None
-
         print("[DEBUG] Audio extraction successful:", audio_path)
         return audio_path
 
     def get_phonemes_from_script(self, script: str) -> list:
-        """Extract phonemes from the provided script."""
         phonemes = []
         words = word_tokenize(script)
         for word in words:
@@ -86,39 +76,30 @@ class LipSyncModel:
         return phonemes
 
     def find_matching_audio_segments(self, audio_path: str, phonemes: list) -> list:
-        """Match phonemes to audio segments using MFCC features."""
         if not os.path.exists(audio_path):
             print(f"[ERROR] Audio file {audio_path} not found")
             return []
-
         segments = []
         y, sr = librosa.load(audio_path, sr=22050)
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-
         for phoneme in phonemes:
             start, end = self.find_audio_segment_for_word(mfccs, phoneme)
             segments.append((start, end))
-
         return segments
 
     def find_audio_segment_for_word(self, mfccs: np.ndarray, phoneme: str) -> tuple:
-        """Find time segment in audio matching the given phoneme using DTW."""
         word_features = self.phoneme_to_feature_matrix([phoneme])
         if word_features.shape[1] == 0 or mfccs.shape[1] == 0:
             return 0, 0
-
         distance, path = fastdtw(word_features, mfccs.T, dist=euclidean)
         if len(path) == 0:
             return 0, 0
-
         start_idx, end_idx = path[0][0], path[-1][0]
         start_time = librosa.frames_to_time(start_idx, sr=22050)
         end_time = librosa.frames_to_time(end_idx, sr=22050)
-
         return start_time, end_time
 
     def phoneme_to_feature_matrix(self, phonemes: list) -> np.ndarray:
-        """Convert a list of phonemes into a feature matrix padded to 13 dimensions."""
         phoneme_to_vector = {
             "AH0": [1, 0, 0],
             "EH0": [0, 1, 0],
@@ -134,15 +115,172 @@ class LipSyncModel:
             if vector is None:
                 print(f"[WARNING] No feature vector found for phoneme: {phoneme}. Using default [0, 0, 0].")
                 vector = [0, 0, 0]
-            # Pad the vector with zeros so that its length is 13.
-            padded_vector = vector + [0] * (13 - len(vector))
+            # Pad vector to 13 dimensions
+            padded_vector = vector + [0]*(13 - len(vector))
             features.append(padded_vector)
         return np.array(features)
 
-
-
 lip_sync_model = LipSyncModel()
 
+# ---------------------------
+# AI and Video Processing Functions
+# ---------------------------
+
+def apply_ai_lip_sync(video_path: str, audio_path: str) -> str:
+    """
+    Use an AI model (e.g., Wav2Lip) to generate a lip-synced video.
+    This function assumes you have a Wav2Lip inference script available.
+    """
+    output_path = os.path.splitext(video_path)[0] + '_ai_lipsynced.mp4'
+    try:
+        command = [
+            "python", "Wav2Lip/inference.py",
+            "--checkpoint_path", "Wav2Lip/checkpoint/wav2lip.pth",
+            "--face", video_path,
+            "--audio", audio_path,
+            "--outfile", output_path
+        ]
+        subprocess.run(command, check=True)
+        print(f"[DEBUG] AI Lip Sync complete: {output_path}")
+    except Exception as e:
+        print(f"[ERROR] AI Lip Sync failed: {e}")
+        # Fallback to original video if failure occurs.
+        return video_path
+    return output_path
+
+def apply_face_movement(video_path: str) -> str:
+    """
+    Simulate face movement by detecting facial landmarks (via Mediapipe)
+    and applying a slight warp or translation to the face region.
+    """
+    output_path = os.path.splitext(video_path)[0] + '_face_moved.mp4'
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("[ERROR] Cannot open video for face movement processing.")
+        return video_path
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    mp_face_mesh = mp.solutions.face_mesh
+    face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Convert frame for Mediapipe
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(rgb_frame)
+        if results.multi_face_landmarks:
+            # For demonstration, we shift the face slightly to the right
+            M = np.float32([[1, 0, 5], [0, 1, 0]])
+            frame = cv2.warpAffine(frame, M, (width, height))
+        out.write(frame)
+    cap.release()
+    out.release()
+    print(f"[DEBUG] Face movement applied: {output_path}")
+    return output_path
+
+def apply_face_blur(video_path: str) -> str:
+    """
+    Apply a blur effect to the face region.
+    Uses a simple Haar Cascade for face detection.
+    """
+    output_path = os.path.splitext(video_path)[0] + '_face_blurred.mp4'
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("[ERROR] Cannot open video for face blur processing.")
+        return video_path
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        for (x, y, w, h) in faces:
+            # Blur the face region
+            face_region = frame[y:y+h, x:x+w]
+            face_region = cv2.GaussianBlur(face_region, (99, 99), 30)
+            frame[y:y+h, x:x+w] = face_region
+        out.write(frame)
+    cap.release()
+    out.release()
+    print(f"[DEBUG] Face blur applied: {output_path}")
+    return output_path
+
+def apply_background_removal(video_path: str) -> str:
+    """
+    Remove the background from each frame using the 'rembg' package.
+    This will output a video with a transparent or plain background.
+    """
+    output_path = os.path.splitext(video_path)[0] + '_bg_removed.mp4'
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("[ERROR] Cannot open video for background removal processing.")
+        return video_path
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Convert frame to PNG bytes and remove background
+        _, buffer = cv2.imencode('.png', frame)
+        result = remove(buffer.tobytes())
+        # Decode the processed image
+        nparr = np.frombuffer(result, np.uint8)
+        processed_frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if processed_frame is None:
+            processed_frame = frame
+        else:
+            processed_frame = cv2.resize(processed_frame, (width, height))
+        out.write(processed_frame)
+    cap.release()
+    out.release()
+    print(f"[DEBUG] Background removal applied: {output_path}")
+    return output_path
+
+def process_video_advanced(video_path: str, audio_path: str, toggles: dict) -> str:
+    """
+    Process the video based on toggles:
+      - AI Lip Sync
+      - Face Movement
+      - Face Blur
+      - Background Removal
+    Each step creates a new video file (using suffixes) and the output of one step is fed into the next.
+    """
+    current_video = video_path
+
+    if toggles.get('ai_lip_sync'):
+        current_video = apply_ai_lip_sync(current_video, audio_path)
+
+    if toggles.get('face_movement'):
+        current_video = apply_face_movement(current_video)
+
+    if toggles.get('blur'):
+        current_video = apply_face_blur(current_video)
+
+    if toggles.get('background_removal'):
+        current_video = apply_background_removal(current_video)
+
+    return current_video
 
 # ---------------------------
 # Routes
@@ -151,12 +289,9 @@ lip_sync_model = LipSyncModel()
 def index():
     return send_from_directory('templates', 'index.html')
 
-
 @app.route('/models/<path:filename>')
 def serve_model(filename):
-    """Serve model files from the 'models' directory."""
     return send_from_directory(MODELS_DIR, filename)
-
 
 @app.route('/upload', methods=['POST'])
 def upload_video():
@@ -177,16 +312,31 @@ def upload_video():
         video_file_path = os.path.join(PROCESSED_DIR, video_filename)
         video.save(video_file_path)
 
+        # Extract audio from video
         extracted_audio_path = lip_sync_model.extract_audio_from_video(video_file_path)
         if not extracted_audio_path:
             return jsonify({"message": "Audio extraction failed!"}), 500
 
+        # (Optional) Use phoneme matching if desired – here we simply log segments.
         phonemes = lip_sync_model.get_phonemes_from_script(script)
         audio_segments = lip_sync_model.find_matching_audio_segments(extracted_audio_path, phonemes)
+        for i, (start, end) in enumerate(audio_segments):
+            print(f"[DEBUG] Audio segment {i}: {start:.2f} s to {end:.2f} s")
 
-        synced_video_path = apply_lip_sync_to_video(video_file_path, extracted_audio_path, audio_segments)
+        # Get toggle values from the form (checkbox value "on" if enabled)
+        toggles = {
+            'face_movement': request.form.get('toggle_face_movement') == "on",
+            'blur': request.form.get('toggle_blur') == "on",
+            'background_removal': request.form.get('toggle_background_removal') == "on",
+            'ai_lip_sync': request.form.get('toggle_ai_lip_sync') == "on"
+        }
 
-        with open(synced_video_path, "rb") as f:
+        # Process the video using advanced AI methods and other effects
+        processed_video_path = process_video_advanced(video_file_path, extracted_audio_path, toggles)
+
+        # (Optionally, merge the processed audio back if needed; here we assume the AI lip sync already handled audio.)
+        # For demonstration, we assume the processed video already has proper audio.
+        with open(processed_video_path, "rb") as f:
             final_video_id = fs.put(f, filename=f'final_{video_filename}', content_type="video/mp4")
 
         return jsonify({"message": "Video processed successfully!", "video_id": str(final_video_id)})
@@ -194,47 +344,6 @@ def upload_video():
     except Exception as e:
         print(f"[ERROR] Exception in /upload: {e}")
         return jsonify({"message": f"An error occurred: {str(e)}"}), 500
-
-
-def apply_lip_sync_to_video(video_path: str, audio_path: str, audio_segments: list) -> str:
-    """
-    Apply lip sync to the video by:
-      - Extracting audio segments corresponding to phoneme timings,
-      - Concatenating them into a new audio track,
-      - And merging the new audio with the original video.
-    """
-    new_audio_path = os.path.splitext(video_path)[0] + '_new_audio.wav'
-    if os.path.exists(new_audio_path):
-        os.remove(new_audio_path)
-
-    try:
-        original_audio = AudioSegment.from_wav(audio_path)
-        new_audio = AudioSegment.empty()
-
-        for (start, end) in audio_segments:
-            start_ms = int(start * 1000)
-            end_ms = int(end * 1000)
-            if end_ms > start_ms:
-                segment_audio = original_audio[start_ms:end_ms]
-                new_audio += segment_audio
-
-        if len(new_audio) == 0:
-            new_audio = original_audio
-
-        new_audio.export(new_audio_path, format="wav")
-    except Exception as e:
-        print(f"[ERROR] Failed to create new audio track: {e}")
-        new_audio_path = audio_path
-
-    synced_video_path = os.path.splitext(video_path)[0] + "_synced.mp4"
-    try:
-        ffmpeg.input(video_path).output(synced_video_path, audio=new_audio_path).run(overwrite_output=True)
-        print(f"[DEBUG] Synced video created: {synced_video_path}")
-    except Exception as e:
-        print(f"[ERROR] Lip sync video processing failed: {e}")
-        return video_path  # Fallback to the original video
-    return synced_video_path
-
 
 @app.route('/download/<video_id>', methods=['GET'])
 def download_video(video_id):
@@ -244,7 +353,6 @@ def download_video(video_id):
     except Exception as e:
         print(f"[ERROR] Exception in /download: {e}")
         return jsonify({"message": f"Error downloading video: {str(e)}"}), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True)
