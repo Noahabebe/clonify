@@ -4,11 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lip Sync & Speech Verification</title>
+  
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+  
   <style>
     /* Modal Styles */
     #modalOverlay {
@@ -27,30 +29,17 @@
       max-width: 600px;
       width: 90%;
     }
-    /* Face Guide Overlay */
-    #faceGuide {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 320px;
-      height: 240px;
-      pointer-events: none;
-      background: url('static/face_structure.png') center center no-repeat;
-      background-size: contain;
-      opacity: 0; /* Initially hidden */
-      transition: opacity 0.3s ease-in-out;
-    }
   </style>
 </head>
+
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
   <!-- Privacy Policy Modal -->
   <div id="modalOverlay">
-    <div id="modalContent" class="p-6">
+    <div id="modalContent">
       <h2 class="text-xl font-bold mb-4">Privacy Policy & Terms of Use</h2>
       <p class="mb-4 text-sm">
         By using this website, you consent to have your voice and video recorded for voice cloning and lip-syncing purposes.
         Your data will be used solely for generating a synthetic video matching your voice and will not be shared with third parties.
-        Please read our full <a href="#" class="text-blue-500 underline">Privacy Policy</a> and <a href="#" class="text-blue-500 underline">Terms of Use</a>.
       </p>
       <div class="flex justify-end space-x-4">
         <button id="declineBtn" class="bg-red-500 text-white px-4 py-2 rounded">Decline</button>
@@ -58,76 +47,36 @@
       </div>
     </div>
   </div>
-  
-  <!-- Main Content (hidden until user accepts) -->
+
+  <!-- Main Content -->
   <div id="mainContent" class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full hidden">
     <h1 class="text-2xl font-bold text-center mb-6">Lip Sync & Speech Verification</h1>
-    
-    <!-- Instructions -->
-    <div class="mb-4 p-4 border rounded bg-gray-50">
-      <p class="mb-2 font-semibold">Instructions:</p>
-      <ul class="list-disc list-inside text-sm">
-        <li>Record a video of <span class="font-bold">up to 30 seconds</span>.</li>
-        <li>Align your face within the on‑screen guide below.</li>
-        <li>Recite the following tongue twister for best voice cloning and phoneme coverage:</li>
-        <li class="italic">
-          "She sells seashells by the seashore; Peter Piper picked a peck of pickled peppers; How can a clam cram in a clean cream can?"
-        </li>
-      </ul>
+
+    <!-- Recording Controls -->
+    <div class="mb-4 flex justify-center space-x-4">
+      <button type="button" id="startRecording" class="bg-blue-500 text-white px-4 py-2 rounded">Start Recording</button>
+      <button type="button" id="stopRecording" class="bg-red-500 text-white px-4 py-2 rounded hidden">Stop Recording</button>
     </div>
-    
-    <!-- Recording and Submission Form -->
-    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-      <!-- Video Recording Controls -->
-      <div class="mb-4">
-        <div class="flex justify-center space-x-4">
-          <button type="button" id="startRecording" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition duration-200">Start Recording</button>
-          <button type="button" id="stopRecording" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-200 hidden">Stop Recording</button>
-        </div>
-        <p class="text-center text-sm mt-2">Record a video (max 30 seconds).</p>
-      </div>
-      
-      <!-- Custom Script -->
-      <div class="mb-4">
-        <label for="script" class="block text-gray-700 font-medium">Custom Script (include the tongue twister):</label>
-        <textarea name="script" id="script" rows="4" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="E.g., She sells seashells by the seashore; Peter Piper picked a peck of pickled peppers; How can a clam cram in a clean cream can?"></textarea>
-      </div>
-      <div class="mb-4">
-        <label for="toggle_face_movement" class="inline-flex items-center">
-          <input type="checkbox" name="toggle_face_movement" id="toggle_face_movement" class="form-checkbox">
-          <span class="ml-2">Enable face movement effect</span>
-        </label>
-      </div>
-      <button type="submit" class="w-full bg-blue-500 text-white font-bold py-2 rounded hover:bg-blue-600 transition duration-200">Process Video</button>
-    </form>
-    
+
+    <video id="trackingVideo" width="320" height="240" autoplay class="border rounded"></video>
+
     <!-- Progress Indicator -->
     <div id="progress" class="hidden mt-4 text-center text-gray-600">
-      <span class="loader animate-spin border-4 border-blue-500 border-t-transparent rounded-full w-6 h-6 inline-block"></span>
+      <span class="animate-spin border-4 border-blue-500 border-t-transparent rounded-full w-6 h-6 inline-block"></span>
       Processing your video...
     </div>
-    
-    <!-- Message -->
-    <div id="message" class="hidden mt-4 text-center text-white p-2 rounded"></div>
-    
+
     <!-- Download Button -->
     <div id="downloadContainer" class="hidden mt-4 text-center">
-      <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 transition duration-200">Download Processed Video</a>
-    </div>
-    
-    <!-- Face Tracking & Recording Section -->
-    <div class="mt-6 relative">
-      <p class="text-center mb-2 text-sm font-semibold">Align your face within the guide below:</p>
-            <video id="trackingVideo" width="320" height="240" autoplay class="border rounded"></video>
-      <canvas id="faceGuide"></canvas>
+      <a id="downloadLink" class="bg-green-500 text-white font-bold py-2 px-4 rounded">Download Processed Video</a>
     </div>
   </div>
 
-  <!-- FFmpeg.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.js/0.11.0/ffmpeg.min.js"></script>
+  <!-- FFmpeg.js (Fixed Import) -->
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
   <script>
-    document.addEventListener("DOMContentLoaded", function () {
+    document.addEventListener("DOMContentLoaded", async function () {
       const modalOverlay = document.getElementById("modalOverlay");
       const acceptBtn = document.getElementById("acceptBtn");
       const declineBtn = document.getElementById("declineBtn");
@@ -136,7 +85,6 @@
       const stopRecording = document.getElementById("stopRecording");
       const trackingVideo = document.getElementById("trackingVideo");
       const progress = document.getElementById("progress");
-      const message = document.getElementById("message");
       const downloadContainer = document.getElementById("downloadContainer");
       const downloadLink = document.getElementById("downloadLink");
 
@@ -153,7 +101,7 @@
         alert("You must accept the terms to continue.");
       });
 
-      // Video Recording
+      // Get user media
       navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
         trackingVideo.srcObject = stream;
 
@@ -167,9 +115,9 @@
             }
           };
 
-          mediaRecorder.onstop = () => {
+          mediaRecorder.onstop = async () => {
             const blob = new Blob(recordedChunks, { type: "video/webm" });
-            processVideo(blob);
+            await processVideo(blob);
           };
 
           mediaRecorder.start();
@@ -188,25 +136,28 @@
       async function processVideo(blob) {
         progress.classList.remove("hidden");
 
-        const ffmpeg = await createFFmpeg({ log: true });
-        await ffmpeg.load();
+        // Load FFmpeg
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        const ffmpeg = createFFmpeg({ log: true });
 
-        const reader = new FileReader();
-        reader.readAsArrayBuffer(blob);
-        reader.onload = async () => {
-          const buffer = new Uint8Array(reader.result);
-          ffmpeg.FS("writeFile", "input.webm", buffer);
-          await ffmpeg.run("-i", "input.webm", "-preset", "ultrafast", "output.mp4");
+        if (!ffmpeg.isLoaded()) {
+          await ffmpeg.load();
+        }
 
-          const output = ffmpeg.FS("readFile", "output.mp4");
-          const videoBlob = new Blob([output.buffer], { type: "video/mp4" });
-          const videoUrl = URL.createObjectURL(videoBlob);
+        // Convert WebM to MP4
+        const webmData = await fetchFile(blob);
+        ffmpeg.FS("writeFile", "input.webm", webmData);
+        await ffmpeg.run("-i", "input.webm", "-preset", "ultrafast", "output.mp4");
 
-          progress.classList.add("hidden");
-          downloadContainer.classList.remove("hidden");
-          downloadLink.href = videoUrl;
-          downloadLink.download = "processed_video.mp4";
-        };
+        const mp4Data = ffmpeg.FS("readFile", "output.mp4");
+        const mp4Blob = new Blob([mp4Data.buffer], { type: "video/mp4" });
+        const videoUrl = URL.createObjectURL(mp4Blob);
+
+        // Show download link
+        progress.classList.add("hidden");
+        downloadContainer.classList.remove("hidden");
+        downloadLink.href = videoUrl;
+        downloadLink.download = "processed_video.mp4";
       }
     });
   </script>
