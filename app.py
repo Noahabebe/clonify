@@ -144,7 +144,7 @@ def apply_ai_lip_sync(video_path: str, audio_path: str) -> str:
             '--audio', os.path.abspath(audio_path),
             '--outfile', output_video
         ]
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, cwd=os.path.abspath("Wav2Lip"))
         print(f"AI Lip Sync complete: {output_video}")
     except Exception as e:
         print(f"AI Lip Sync failed: {e}")
